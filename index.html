@@ -7,7 +7,7 @@
 <style>
   :root{
     --bg:#0b1222; --panel:#0f172a; --card:#0e1626; --line:#1e293b; --text:#e5e7eb; --muted:#9ca3af;
-    --chip:#12243c; --accent:#1e3a8a; --ok:#16a34a; --warn:#f59e0b; --bad:#ef4444;
+    --chip:#12243c;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -62,7 +62,7 @@
     <div class="panel">
       <div class="section-title">1) Upload</div>
       <input type="file" id="file" accept=".csv" />
-      <div class="muted" style="margin-top:6px">Columns expected: <span class="mono chip">Client</span> <span class="mono chip">No. Pass.</span> <span class="mono chip">P/U Point</span> <span class="mono chip">Time</span> <span class="mono chip">Pickup Notes</span></div>
+      <div class="muted" style="margin-top:6px">Columns: <span class="mono chip">Client</span> <span class="mono chip">No. Pass.</span> <span class="mono chip">P/U Point</span> <span class="mono chip">Time</span> <span class="mono chip">Pickup Notes</span></div>
     </div>
 
     <div class="panel">
@@ -84,7 +84,7 @@
     </div>
     <div class="panel">
       <div class="section-title">Status</div>
-      <div id="status" class="status">No file loaded. (v=fr-guard2)</div>
+      <div id="status" class="status">No file loaded. (v=fr-lockddi1)</div>
     </div>
   </aside>
 
@@ -97,14 +97,6 @@
 </main>
 
 <script>
-// Hard surfacing of runtime errors on the page
-window.onerror = (msg, src, line, col, err) => {
-  const pre = document.createElement('pre');
-  pre.style.cssText='white-space:pre-wrap;background:#3b0f0f;color:#ffecec;padding:10px;border:1px solid #7f1d1d;border-radius:8px;margin:10px 0';
-  pre.textContent = `Script error:\n${msg}\n${src?`at ${src}:${line}:${col}\n`:''}${err&&err.stack?err.stack:''}`;
-  document.querySelector('.right .panel').prepend(pre);
-};
-
 /* ---------- Defaults ---------- */
 const DEFAULT_BOATS = [
   { name: "Joyride",        seats: 32, toilet: true },
@@ -118,21 +110,19 @@ const DEFAULT_BOATS = [
 ];
 
 let rows=[], boats=[];
-
-/* ---------- Helpers ---------- */
 const el = id => document.getElementById(id);
 const setStatus = s => el('status').textContent = s;
 const messagesEl = el('messages');
 function clearMsgs(){ messagesEl.innerHTML=''; }
-function pushMsg(text,tone=''){ const m=document.createElement('span'); m.className='chip'; const col = tone==='ok'?'rgba(22,163,74,.5)':tone==='warn'?'rgba(245,158,11,.5)':tone==='bad'?'rgba(239,68,68,.5)':'#1f3a59'; m.style.borderColor=col; m.textContent=text; messagesEl.appendChild(m); }
+function pushMsg(text,tone=''){ const m=document.createElement('span'); m.className='chip'; if(tone==='ok')m.style.borderColor='rgba(22,163,74,.5)'; if(tone==='warn')m.style.borderColor='rgba(245,158,11,.5)'; if(tone==='bad')m.style.borderColor='rgba(239,68,68,.5)'; m.textContent=text; messagesEl.appendChild(m); }
 function norm(s){ return (s??'').toString().trim(); }
+function escapeHtml(s){ return (s??'').replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m])); }
 function ownName(client){ return norm(client.split(/\*(?:TW|MAP)\*/i)[0]); }
 function normalizeFull(name){ return ownName(name).replace(/\(\s*F\s*\+\s*R\s*\)/ig,'').replace(/\s+/g,' ').toLowerCase(); }
 function edgeOrder(n){ const res=[]; for(let a=0,b=n-1;a<=b;a++,b--){ res.push(a); if(b>a) res.push(b);} return res; }
-const escapeHtml = s => (s??'').replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
 const toCSV = rows => rows.map(r=>r.map(v=>{ if(v==null)return''; v=String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\n');
 
-/* CSV parse (robust quotes) */
+/* CSV helpers */
 function parseCSV(text){
   const rows=[]; let cur='',row=[],inQ=false,i=0;
   while(i<text.length){ const ch=text[i];
@@ -231,7 +221,7 @@ function renderBoats(){
       if(act==='hold'){
         let v=parseInt(inp.value||'0',10); v=isNaN(v)?0:v; v=Math.max(0,Math.min(v,boats[idx].seats)); boats[idx].hold=v; inp.value=String(v);
       }
-      renderBoats(); // re-render to reflect mutual exclusion cleanly
+      renderBoats();
     };
   });
 }
@@ -242,7 +232,6 @@ function allocate(){
   if(!rows.length){ setStatus('Please upload a CSV first.'); return; }
   if(!boats.length){ setStatus('No boats in use. Click "Reset boats".'); return; }
 
-  // Build boats
   const B = boats.map(b=>({
     name:b.name,seats:b.seats,toilet:b.toilet,
     tagDDI:!!b.tagDDI, tagFly:!!b.tagFly, tagEE:!!b.tagEE, tagWH:!!b.tagWH,
@@ -250,23 +239,15 @@ function allocate(){
     pax:[], count:0
   }));
   const eff = b => Math.max(0,b.seats-b.hold);
-  const edges = edgeOrder(B.length);         // [0, last, 1, last-1, ...]
+  const edges = edgeOrder(B.length);
   const lastIdx = edges[1] ?? (B.length-1);
   const secondLastIdx = Math.max(0, B.length-2);
   const edgeBoats = edges.map(i=>({i,b:B[i]}));
   const tagOrder = tag => edgeBoats.filter(o=>o.b[`tag${tag}`]).sort((a,b)=>edges.indexOf(a.i)-edges.indexOf(b.i));
 
-  // Sections
+  // Build sections from times
   const distinct = [...new Set(rows.map(r=>r.timeMins).filter(v=>v!=null))].sort((a,b)=>a-b);
   rows.forEach(r=>r.section = quartileSection(r.timeMins, distinct));
-
-  // Helpers
-  function addPax(i,r,tags=[],hl=[]){ const need=r.num||1; const b=B[i]; b.pax.push({row:r,count:need,tags:new Set(tags),highlights:new Set(hl)}); b.count+=need; }
-  const boatOf = row => { for(let i=0;i<B.length;i++){ if(B[i].pax.some(p=>p.row===row)) return i; } return -1; };
-  function sectionEdgeOrder(section){
-    if(section==='1st'||section==='2nd'){ const wl = edges.filter(i=>i!==lastIdx); return [...wl,lastIdx]; }
-    return edges;
-  }
 
   // Matchers
   const isDDI   = r => /daydream\s*island/i.test(r.pu);
@@ -279,9 +260,21 @@ function allocate(){
   const charter = r => /charter/i.test(r.pu)||/charter/i.test(r.notes||'');
   const wHoldName = r => /\bweather\s*hold\b/i.test(r.clientRaw);
 
-  // Filter
+  // Filter unwanted rows
   const filtered = rows.filter(r=>!wHoldName(r) && !charter(r));
   const unassigned = new Set(filtered);
+
+  // ---- ASSUMPTIONS: DDI = 1st, F+R = Unknown (latest) ----
+  filtered.forEach(r=>{
+    if(isDDI(r)) r.section = '1st';
+    if(hasFR(r)) r.section = 'Unknown';
+  });
+
+  function addPax(i,r,tags=[],hl=[]){ const need=r.num||1; const b=B[i]; b.pax.push({row:r,count:need,tags:new Set(tags),highlights:new Set(hl)}); b.count+=need; }
+  function sectionEdgeOrder(section){
+    if(section==='1st'||section==='2nd'){ const wl = edges.filter(i=>i!==lastIdx); return [...wl,lastIdx]; }
+    return edges;
+  }
 
   // ---- DDI first (only DDI-tagged boats) ----
   let ddiBoats = tagOrder('DDI');
@@ -294,7 +287,7 @@ function allocate(){
     for(const {i} of ddiBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['DDI']); unassigned.delete(r); break; } }
   }
 
-  // ---- F+R strict rule: only Fly boats (latest preferred), else overflow to second-last non-DDI ----
+  // ---- F+R strict: only Fly boats (latest preferred), overflow to 2nd last non-DDI ----
   const flyRows = filtered.filter(r=>hasFR(r) && !earlyBoat(r))
     .sort((a,b)=>{
       const rank = s => ({'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 5);
@@ -302,21 +295,18 @@ function allocate(){
       return (b.timeMins??-1)-(a.timeMins??-1);
     });
 
-  let flyBoats = tagOrder('Fly'); // earliest→latest along edges
+  let flyBoats = tagOrder('Fly');
   if(flyRows.length && flyBoats.length===0){
     B[lastIdx].tagFly = true; flyBoats = tagOrder('Fly'); pushMsg('No Fly boat tagged — auto-tagged latest boat.','warn');
   }
   const flyLatestFirst = flyBoats.slice().reverse();
-
   function overflowForFly(cnt){
-    // Prefer second-last, but never a DDI boat; else nearest late non-DDI that fits
     const candidates = [];
     if(secondLastIdx!==lastIdx) candidates.push(secondLastIdx);
     for(let i=B.length-3;i>=0;i--) candidates.push(i);
     for(const i of candidates){ const b=B[i]; if(b.tagDDI) continue; if(b.count+cnt<=eff(b)) return i; }
     return null;
   }
-
   for(const r of flyRows){
     if(!unassigned.has(r)) continue; const need=r.num||1;
     const order = (r.section==='Unknown'||r.section==='4th'||r.section==='3rd') ? flyLatestFirst : flyBoats;
@@ -329,10 +319,9 @@ function allocate(){
     }
   }
 
-  // ---- EE: keep early if >=3 boats & room; otherwise latest EE or last ----
+  // ---- EE ----
   let eeBoats = tagOrder('EE');
-  const eeRows = filtered.filter(isEE);
-  for(const r of eeRows){
+  for(const r of filtered.filter(isEE)){
     if(!unassigned.has(r)) continue; const need=r.num||1;
     const earlyEE = (r.section==='1st'||r.section==='2nd');
     if(earlyEE && B.length>=3){
@@ -347,7 +336,7 @@ function allocate(){
     if(placed) unassigned.delete(r);
   }
 
-  // ---- MAP (south only) simple grouping ----
+  // ---- MAP (south only) ----
   const isSouth = el('tour').value==='south';
   function hasMAP(row){ return /\*MAP\*/i.test(row.clientRaw); }
   if(isSouth){
@@ -361,15 +350,12 @@ function allocate(){
     }
   }
 
-  // ---- Infant → prefer big boats ----
-  const infantRows = filtered.filter(r=>infant(r) && unassigned.has(r));
-  if(infantRows.length){
+  // ---- Infant prefer big ----
+  for(const r of filtered.filter(r=>/infant/i.test(r.notes||'')).filter(r=>unassigned.has(r))){
+    const need=r.num||1; let placed=false;
     const pref = B.map((b,i)=>({i,b})).sort((a,b)=>(b.b.seats===32)-(a.b.seats===32)||(b.b.toilet?1:0)-(a.b.toilet?1:0)||edges.indexOf(a.i)-edges.indexOf(b.i));
-    for(const r of infantRows){
-      const need=r.num||1; let placed=false;
-      for(const {i} of pref){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['Infant']); unassigned.delete(r); placed=true; break; } }
-      if(!placed){ for(const {i} of edgeBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['Infant'],['Infant fallback']); unassigned.delete(r); break; } } }
-    }
+    for(const {i} of pref){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['Infant']); unassigned.delete(r); placed=true; break; } }
+    if(!placed){ for(const {i} of edgeBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['Infant'],['Infant fallback']); unassigned.delete(r); break; } } }
   }
 
   // ---- Own way / TBC / not sure → later bias ----
@@ -393,10 +379,10 @@ function allocate(){
   }).forEach(r=>{
     const need=r.num||1; let placed=false;
     for(const i of sectionEdgeOrder(r.section)){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r); placed=true; break; } }
-    if(!placed){ for(const i of edges){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Capacity fallback']); break; } }
+    if(!placed){ for(const {i} of edgeBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Capacity fallback']); break; } }
   });
 
-  // ---- SAFETY: F+R never on DDI; F+R must be on Fly or allowed overflow ----
+  // ---- SAFETY: F+R never on DDI; F+R only on Fly/overflow ----
   (function enforceFR(){
     const flyIdx = tagOrder('Fly').map(o=>o.i);
     for(let i=0;i<B.length;i++){
@@ -405,38 +391,38 @@ function allocate(){
         const p=b.pax[k];
         const isFR = p.tags.has('F+R') || /\(\s*F\s*\+\s*R\s*\)/i.test(p.row.clientRaw) || noteFly(p.row);
         if(!isFR) continue;
-        if(flyIdx.includes(i)) continue; // OK (on Fly)
-        if(B[i].tagDDI){ // NEVER on DDI
-          const need=p.count;
-          let moved=false;
-          // Try latest Fly first
+        if(flyIdx.includes(i)) continue;
+        const need=p.count;
+        let moved=false;
+        // never stay on DDI
+        if(B[i].tagDDI){
           for(const tgt of flyIdx.slice().reverse()){ const tb=B[tgt]; if(tb.count+need<=eff(tb)){ b.pax.splice(k,1); b.count-=need; addPax(tgt,p.row,[...p.tags],['Moved from DDI → Fly']); moved=true; k--; break; } }
-          // Else overflow to second-last non-DDI
           if(!moved){
-            const over = overflowForFly(need);
+            const over = (function(cnt){
+              const can=[]; if(secondLastIdx!==lastIdx) can.push(secondLastIdx); for(let x=B.length-3;x>=0;x--) can.push(x);
+              for(const x of can){ const bb=B[x]; if(bb.tagDDI) continue; if(bb.count+cnt<=eff(bb)) return x; } return null;
+            })(need);
             if(over!=null){ b.pax.splice(k,1); b.count-=need; addPax(over,p.row,[...p.tags],['Moved from DDI → overflow']); k--; moved=true; }
           }
           if(!moved){ p.highlights.add('FR rule violation (no Fly/overflow capacity)'); }
           continue;
         }
-        // Not DDI and not Fly → try to move to Fly or overflow (to keep invariant)
-        if(!flyIdx.length) continue;
-        const need=p.count;
-        let moved=false;
+        // not DDI & not Fly → try move to Fly or overflow
         for(const tgt of flyIdx.slice().reverse()){ const tb=B[tgt]; if(tb.count+need<=eff(tb)){ b.pax.splice(k,1); b.count-=need; addPax(tgt,p.row,[...p.tags],['Moved to Fly']); moved=true; k--; break; } }
         if(!moved){
-          const over = overflowForFly(need);
+          const over = (function(cnt){
+            const can=[]; if(secondLastIdx!==lastIdx) can.push(secondLastIdx); for(let x=B.length-3;x>=0;x--) can.push(x);
+            for(const x of can){ const bb=B[x]; if(bb.tagDDI) continue; if(bb.count+cnt<=eff(bb)) return x; } return null;
+          })(need);
           if(over!=null){ b.pax.splice(k,1); b.count-=need; addPax(over,p.row,[...p.tags],['Fly overflow']); k--; }
-        }
       }
-    }
+    } }
   })();
 
-  // ---- Edge fill: pack Boat #1 and Last first (respect FR rule) ----
+  // ---- Edge fill: pack Boat #1 and Last first (but NEVER move DDI; NEVER pull FR into non-Fly) ----
   function tryPull(toIdx, preferLateOnly){
     const dest=B[toIdx]; if(dest.count>=eff(dest)) return false;
     const isDestFly = dest.tagFly;
-    // look from middle outward (donors not equal to dest)
     const donors = edges.filter(j=>j!==toIdx).sort((a,b)=>{
       const mid=(B.length-1)/2; const da=Math.abs(a-mid), db=Math.abs(b-mid); return db-da || a-b;
     });
@@ -445,8 +431,10 @@ function allocate(){
       for(let k=0;k<src.pax.length;k++){
         const p=src.pax[k];
         const isFR = p.tags.has('F+R') || /\(\s*F\s*\+\s*R\s*\)/i.test(p.row.clientRaw) || noteFly(p.row);
-        // never pull F+R into non-Fly destinations
-        if(isFR && !isDestFly) continue;
+        const isDDI = p.tags.has('DDI');
+        if(isDDI) continue;                             // never move DDI during rebalancing
+        if(isFR && !isDestFly) continue;                // never pull FR into non-Fly
+        if(dest===B[lastIdx] && isDDI) continue;        // (double safety) never pull DDI into last
         if(preferLateOnly && !['Unknown','4th','3rd'].includes(p.row.section)) continue;
         if(dest.count + p.count <= eff(dest)){
           src.pax.splice(k,1); src.count-=p.count; addPax(toIdx,p.row,[...p.tags],[...p.highlights,'Edge fill']); return true;
@@ -458,32 +446,12 @@ function allocate(){
   for(const idx of [edges[0], edges[1]].filter(v=>v!=null)){ let ch=true; while(ch){ ch=tryPull(idx,true); } }
   for(const idx of [edges[0], edges[1]].filter(v=>v!=null)){ let ch=true; while(ch){ ch=tryPull(idx,false); } }
 
-  // ---- Micro-pack: if Boat #1 still has gap, move any suitable non-FR, non-DDI from middle ----
-  (function topUpFirst(){
-    const first=B[0]; if(!first) return;
-    for(let guard=0; guard<200 && first.count<eff(first); guard++){
-      let moved=false;
-      for(const j of edges.slice(1)){ const src=B[j];
-        for(let k=0;k<src.pax.length;k++){
-          const p=src.pax[k];
-          const isFR = p.tags.has('F+R') || /\(\s*F\s*\+\s*R\s*\)/i.test(p.row.clientRaw) || noteFly(p.row);
-          const isDDI = p.tags.has('DDI');
-          if(isFR||isDDI) continue;
-          if(first.count + p.count <= eff(first)){
-            src.pax.splice(k,1); src.count-=p.count; addPax(0,p.row,[...p.tags],[...p.highlights,'Top-up Boat #1']); moved=true; break;
-          }
-        }
-        if(moved) break;
-      }
-      if(!moved) break;
-    }
-  })();
+  // (Removed Late→Last swap entirely)
 
   // ---- Output ----
   const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
   const results = el('results'); results.innerHTML='';
   let total=0, cap=0;
-
   B.forEach((b,idx)=>{
     total+=b.count; cap+=eff(b);
     const boatTags=[b.tagDDI?'DDI':'', b.tagFly?'Fly-Raft':'', b.tagEE?'EE':'', b.tagWH?'WH':''].filter(Boolean).join('; ');
@@ -563,7 +531,6 @@ function wire(){
     rows = data.map(r=>{
       const clientRaw = norm(r[idxClient]);
       const numRaw = (r[idxNum]??'').toString();
-      // F+R detection anywhere
       const FRfromCount  = /\(\s*F\s*\+\s*R\s*\)/i.test(numRaw);
       const FRfromClient = /\(\s*F\s*\+\s*R\s*\)/i.test(clientRaw);
       const FRfromNotes  = /\(\s*F\s*\+\s*R\s*\)/i.test(norm(idxNotes>=0?r[idxNotes]:'')); 
@@ -579,14 +546,20 @@ function wire(){
       const timeMins = parseTimeToSortable(time);
 
       return { clientRaw, num, pu, time, timeMins, notes, phone, flyFromCount: flyFromAny };
-    }).filter(r=>!/\bweather\s*hold\b/i.test(r.clientRaw)); // drop WEATHER HOLD rows entirely
+    }).filter(r=>!/\bweather\s*hold\b/i.test(r.clientRaw));
 
     el('results').innerHTML=''; el('download').disabled=true;
     setStatus(`Loaded ${rows.length} rows. Configure boats & holds, then Allocate.`);
   });
 }
+function findColIndex(h,keys){
+  const lower=h.map(x=>x.toLowerCase());
+  for(const k of keys){ const i=lower.indexOf(k); if(i!==-1) return i; }
+  for(let i=0;i<lower.length;i++){ if(keys.some(k=>lower[i].includes(k))) return i; }
+  return -1;
+}
 
-function init(){ boats=cloneBoats(); renderBoats(); wire(); setStatus('No file loaded. (v=fr-guard2)'); }
+function init(){ boats=cloneBoats(); renderBoats(); wire(); setStatus('No file loaded. (v=fr-lockddi1)'); }
 document.readyState==='loading' ? document.addEventListener('DOMContentLoaded',init) : init();
 </script>
 </body>
