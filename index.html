@@ -180,7 +180,7 @@ function pushMsg(text,tone=''){
 function norm(s){ return (s??'').toString().trim(); }
 function escapeHtml(s){ return (s??'').replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m])); }
 function edgeOrder(n){ const res=[]; for(let a=0,b=n-1;a<=b;a++,b--){ res.push(a); if(b>a) res.push(b);} return res; }
-const toCSV = rows => rows.map(r=>r.map(v=>{ if(v==null)return''; v=String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,"""")+'"':v; }).join(',')).join('\n'); // escaped below
+
 
 /* ========= Defaults ========= */
 const DEFAULT_BOATS = [
