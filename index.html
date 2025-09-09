@@ -307,8 +307,354 @@ function renderBoats(){
    The missing part won’t affect “boats not showing” — that’s purely the UI boot/render. */
 
 /* ---- Minimal stub so page loads; click Allocate will set status when allocator is added ---- */
-function allocate(){
-  setStatus('Allocation logic not loaded in this snippet. Say “paste allocator” and I’ll include it again with contrast scheme.');
+function allocate(){function allocate(){
+  // ----- setup & guards -----
+  const messagesEl = document.getElementById('messages');
+  function clearMsgs(){ messagesEl.innerHTML=''; }
+  function pushMsg(text,tone=''){
+    const m=document.createElement('span'); m.className='chip';
+    const col = tone==='ok'?'#38d46a':tone==='warn'?'#ffba55':tone==='bad'?'#ff6b6b':'#3a68b1';
+    m.style.borderColor=col; m.textContent=text; messagesEl.appendChild(m);
+  }
+  clearMsgs();
+  if(!rows.length){ setStatus('Please upload a CSV first.'); return; }
+  if(!boats.length){ setStatus('No boats in use. Click "Reset boats".'); return; }
+
+  // ----- snapshot boats -----
+  const B = boats.map(b=>({
+    name:b.name,seats:b.seats,toilet:b.toilet,
+    tagDDI:!!b.tagDDI, tagFly:!!b.tagFly, tagEE:!!b.tagEE, tagWH:!!b.tagWH,
+    hold: Math.max(0,Math.min(b.hold||0,b.seats)),
+    pax:[], count:0
+  }));
+  const eff = b => Math.max(0,b.seats-b.hold);
+  const edges = (function edgeOrder(n){ const res=[]; for(let a=0,b=n-1;a<=b;a++,b--){ res.push(a); if(b>a) res.push(b);} return res; })(B.length);
+  const lastIdx = edges[1] ?? (B.length-1);
+  const secondLastIdx = Math.max(0, B.length-2);
+  const edgeBoats = edges.map(i=>({i,b:B[i]}));
+  const tagOrder = tag => edgeBoats
+    .filter(o=>o.b[`tag${tag}`])
+    .sort((a,b)=>edges.indexOf(a.i)-edges.indexOf(b.i));
+
+  // ----- sectioning (quartiles) -----
+  const distinct = [...new Set(rows.map(r=>r.timeMins).filter(v=>v!=null))].sort((a,b)=>a-b);
+  function quartileSection(mins){
+    if(mins==null || !distinct.length) return 'Unknown';
+    const q1=distinct[Math.floor(distinct.length*.25)];
+    const q2=distinct[Math.floor(distinct.length*.50)];
+    const q3=distinct[Math.floor(distinct.length*.75)];
+    if(mins<=q1) return '1st'; if(mins<=q2) return '2nd'; if(mins<=q3) return '3rd'; return '4th';
+  }
+  rows.forEach(r=>r.section = quartileSection(r.timeMins));
+
+  // ----- matchers -----
+  const isDDI   = r => /daydream\s*island/i.test(r.pu);
+  const isOwn   = r => /(own\s*way|tbc|not\s*sure)/i.test(r.pu);
+  const isEE    = r => /\bee\b/i.test(r.notes||'');
+  const noteFly = r => /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||'');
+  const hasFR   = r => /\(\s*F\s*\+\s*R\s*\)/i.test(r.clientRaw) || r.flyFromCount || noteFly(r);
+  const earlyBoat = r => /early\s*boat/i.test(r.notes||'');
+  const infant  = r => /infant/i.test(r.notes||'');
+  const charter = r => /charter/i.test(r.pu)||/charter/i.test(r.notes||'');
+  const wHoldName = r => /\bweather\s*hold\b/i.test(r.clientRaw);
+
+  // ----- filter unwanted rows -----
+  const filtered = rows.filter(r=>!wHoldName(r) && !charter(r));
+  const unassigned = new Set(filtered);
+
+  // ----- assumptions you requested -----
+  // DDI treated as earliest; F+R treated as latest/Unknown
+  filtered.forEach(r=>{
+    if(isDDI(r)) r.section = '1st';
+    if(hasFR(r)) r.section = 'Unknown';
+  });
+
+  // helpers
+  function addPax(i,r,tags=[],hl=[]){
+    const need=r.num||1; const b=B[i];
+    b.pax.push({row:r,count:need,tags:new Set(tags),highlights:new Set(hl)});
+    b.count+=need;
+  }
+  function sectionEdgeOrder(section){
+    // early sections avoid the *last* boat until needed
+    if(section==='1st'||section==='2nd'){
+      const wl = edges.filter(i=>i!==lastIdx);
+      return [...wl,lastIdx];
+    }
+    return edges;
+  }
+
+  // ===== 1) DDI FIRST (only DDI-tagged boats) =====
+  let ddiBoats = tagOrder('DDI');
+  const ddiRows = filtered.filter(isDDI);
+  if(ddiRows.length && ddiBoats.length===0 && B.length){
+    B[0].tagDDI = true; ddiBoats = tagOrder('DDI'); pushMsg('Auto-tagged earliest boat as DDI.','warn');
+  }
+  for(const r of ddiRows){
+    if(!unassigned.has(r)) continue; const need=r.num||1;
+    for(const {i} of ddiBoats){
+      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['DDI']); unassigned.delete(r); break; }
+    }
+  }
+
+  // ===== 2) F+R STRICT (latest Fly; overflow to 2nd last non-DDI) =====
+  const flyRows = filtered
+    .filter(r=>hasFR(r) && !earlyBoat(r))
+    .sort((a,b)=>{
+      const rank = s => ({'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 5);
+      const ra=rank(a.section), rb=rank(b.section); if(ra!==rb) return ra-rb;
+      return (b.timeMins??-1)-(a.timeMins??-1);
+    });
+
+  let flyBoats = tagOrder('Fly');
+  if(flyRows.length && flyBoats.length===0){
+    B[lastIdx].tagFly = true; flyBoats = tagOrder('Fly'); pushMsg('No Fly boat tagged — auto-tagged latest boat.','warn');
+  }
+  const flyLatestFirst = flyBoats.slice().reverse();
+
+  function overflowForFly(cnt){
+    const candidates = [];
+    if(secondLastIdx!==lastIdx) candidates.push(secondLastIdx);
+    for(let i=B.length-3;i>=0;i--) candidates.push(i);
+    for(const i of candidates){
+      const b=B[i]; if(b.tagDDI) continue;
+      if(b.count+cnt<=eff(b)) return i;
+    }
+    return null;
+  }
+
+  for(const r of flyRows){
+    if(!unassigned.has(r)) continue; const need=r.num||1;
+    const order = (r.section==='Unknown'||r.section==='4th'||r.section==='3rd') ? flyLatestFirst : flyBoats;
+    let placed=false;
+    for(const {i} of order){
+      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['F+R']); unassigned.delete(r); placed=true; break; }
+    }
+    if(!placed){
+      const over = overflowForFly(need);
+      if(over!=null){ addPax(over,r,['F+R'],['Fly-Raft overflow']); unassigned.delete(r); }
+      else pushMsg(`F+R "${r.clientRaw}" could not find Fly/overflow capacity.`, 'bad');
+    }
+  }
+
+  // ===== 3) EE =====
+  let eeBoats = tagOrder('EE');
+  for(const r of filtered.filter(isEE)){
+    if(!unassigned.has(r)) continue; const need=r.num||1;
+    const earlyEE = (r.section==='1st'||r.section==='2nd');
+    if(earlyEE && B.length>=3){
+      let placed=false;
+      for(const i of sectionEdgeOrder(r.section)){
+        const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE']); placed=true; break; }
+      }
+      if(placed){ unassigned.delete(r); continue; }
+    }
+    let placed=false;
+    const eeLate = eeBoats.length ? eeBoats.slice().reverse() : [{i:lastIdx}];
+    for(const {i} of eeLate){
+      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE'],[earlyEE?'Early EE moved later':'']); placed=true; break; }
+    }
+    if(!placed){
+      for(const {i} of edgeBoats){
+        const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE'],['EE by capacity']); placed=true; break; }
+      }
+    }
+    if(placed) unassigned.delete(r);
+  }
+
+  // ===== 4) MAP (south only, same-boat grouping) =====
+  const isSouth = el('tour').value==='south';
+  function hasMAP(row){ return /\*MAP\*/i.test(row.clientRaw); }
+  if(isSouth){
+    const mrows = filtered.filter(hasMAP).filter(r=>unassigned.has(r));
+    let anchor=null;
+    for(const r of mrows){
+      const need=r.num||1; let placed=false;
+      const scan = anchor!=null?[{i:anchor}]:edgeBoats;
+      for(const {i} of scan){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['MAP']); unassigned.delete(r); anchor=i; placed=true; break; } }
+      if(!placed){
+        for(const {i} of edgeBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['MAP'],['*MAP* fallback']); unassigned.delete(r); anchor=i; break; } }
+      }
+    }
+  }
+
+  // ===== 5) Infant prefer big =====
+  const infantRows = filtered.filter(r=>infant(r) && unassigned.has(r));
+  if(infantRows.length){
+    const pref = B.map((b,i)=>({i,b}))
+      .sort((a,b)=>(b.b.seats===32)-(a.b.seats===32)||(b.b.toilet?1:0)-(a.b.toilet?1:0)||edges.indexOf(a.i)-edges.indexOf(b.i));
+    for(const r of infantRows){
+      const need=r.num||1; let placed=false;
+      for(const {i} of pref){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['Infant']); unassigned.delete(r); placed=true; break; } }
+      if(!placed){
+        for(const {i} of edgeBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['Infant'],['Infant fallback']); unassigned.delete(r); break; } }
+      }
+    }
+  }
+
+  // ===== 6) Own way/TBC/not sure → later bias =====
+  for(const r of filtered.filter(r=>isOwn(r) && unassigned.has(r))){
+    const need=r.num||1;
+    for(const i of edges.slice().reverse()){
+      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Own way → later']); unassigned.delete(r); break; }
+    }
+  }
+
+  // ===== 7) Early boat override for F+R (“early boat” in notes) =====
+  for(const r of filtered.filter(r=>earlyBoat(r)&&hasFR(r))){
+    if(!unassigned.has(r)) continue; const need=r.num||1;
+    for(const {i} of edgeBoats){
+      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Early boat override (ignored F+R)']); unassigned.delete(r); break; }
+    }
+  }
+
+  // ===== 8) Baseline fill by section (edges-first; early avoids last) =====
+  const orderSec={'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4};
+  [...unassigned].sort((a,b)=>{
+    const da=orderSec[a.section]??4, db=orderSec[b.section]??4;
+    if(da!==db) return da-db;
+    return (a.timeMins??1e9)-(b.timeMins??1e9);
+  }).forEach(r=>{
+    const need=r.num||1; let placed=false;
+    for(const i of sectionEdgeOrder(r.section)){
+      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r); placed=true; break; }
+    }
+    if(!placed){
+      for(const {i} of edgeBoats){
+        const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Capacity fallback']); break; }
+      }
+    }
+  });
+
+  // ===== 9) SAFETY: F+R never on DDI; F+R only on Fly or allowed overflow =====
+  (function enforceFR(){
+    const flyIdx = tagOrder('Fly').map(o=>o.i);
+    for(let i=0;i<B.length;i++){
+      const b=B[i];
+      for(let k=0;k<b.pax.length;k++){
+        const p=b.pax[k];
+        const isFR = p.tags.has('F+R') || /\(\s*F\s*\+\s*R\s*\)/i.test(p.row.clientRaw) || noteFly(p.row);
+        if(!isFR) continue;
+        if(flyIdx.includes(i)) continue;
+        const need=p.count;
+        let moved=false;
+        // never on DDI
+        if(B[i].tagDDI){
+          for(const tgt of flyIdx.slice().reverse()){
+            const tb=B[tgt]; if(tb.count+need<=eff(tb)){ b.pax.splice(k,1); b.count-=need; addPax(tgt,p.row,[...p.tags],['Moved from DDI → Fly']); moved=true; k--; break; }
+          }
+          if(!moved){
+            const over = (function(cnt){
+              const can=[]; if(secondLastIdx!==lastIdx) can.push(secondLastIdx);
+              for(let x=B.length-3;x>=0;x--) can.push(x);
+              for(const x of can){ const bb=B[x]; if(bb.tagDDI) continue; if(bb.count+cnt<=eff(bb)) return x; }
+              return null;
+            })(need);
+            if(over!=null){ b.pax.splice(k,1); b.count-=need; addPax(over,p.row,[...p.tags],['Moved from DDI → overflow']); k--; moved=true; }
+          }
+          if(!moved){ p.highlights.add('FR rule violation (no Fly/overflow capacity)'); }
+          continue;
+        }
+        // not DDI & not Fly → try to move to Fly or overflow
+        for(const tgt of flyIdx.slice().reverse()){
+          const tb=B[tgt]; if(tb.count+need<=eff(tb)){ b.pax.splice(k,1); b.count-=need; addPax(tgt,p.row,[...p.tags],['Moved to Fly']); moved=true; k--; break; }
+        }
+        if(!moved){
+          const over = (function(cnt){
+            const can=[]; if(secondLastIdx!==lastIdx) can.push(secondLastIdx);
+            for(let x=B.length-3;x>=0;x--) can.push(x);
+            for(const x of can){ const bb=B[x]; if(bb.tagDDI) continue; if(bb.count+cnt<=eff(bb)) return x; }
+            return null;
+          })(need);
+          if(over!=null){ b.pax.splice(k,1); b.count-=need; addPax(over,p.row,[...p.tags],['Fly overflow']); k--; }
+        }
+      }
+    }
+  })();
+
+  // ===== 10) Edge fill — pack first and last (NEVER move DDI; NEVER pull FR into non-Fly) =====
+  function tryPull(toIdx, preferLateOnly){
+    const dest=B[toIdx]; if(dest.count>=eff(dest)) return false;
+    const isDestFly = dest.tagFly;
+    const donors = edges.filter(j=>j!==toIdx).sort((a,b)=>{
+      const mid=(B.length-1)/2; const da=Math.abs(a-mid), db=Math.abs(b-mid); return db-da || a-b;
+    });
+    for(const j of donors){
+      const src=B[j];
+      for(let k=0;k<src.pax.length;k++){
+        const p=src.pax[k];
+        const isFR = p.tags.has('F+R') || /\(\s*F\s*\+\s*R\s*\)/i.test(p.row.clientRaw) || noteFly(p.row);
+        const isDDI = p.tags.has('DDI');
+        if(isDDI) continue;                  // never move DDI during rebalancing
+        if(isFR && !isDestFly) continue;     // never pull FR into non-Fly
+        if(preferLateOnly && !['Unknown','4th','3rd'].includes(p.row.section)) continue;
+        if(dest.count + p.count <= eff(dest)){
+          src.pax.splice(k,1); src.count-=p.count; addPax(toIdx,p.row,[...p.tags],[...p.highlights,'Edge fill']); return true;
+        }
+      }
+    }
+    return false;
+  }
+  for(const idx of [edges[0], edges[1]].filter(v=>v!=null)){ let ch=true; while(ch){ ch=tryPull(idx,true); } }
+  for(const idx of [edges[0], edges[1]].filter(v=>v!=null)){ let ch=true; while(ch){ ch=tryPull(idx,false); } }
+
+  // ===== 11) Render output =====
+  const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
+  const results = el('results'); results.innerHTML='';
+  let total=0, cap=0;
+
+  B.forEach((b,idx)=>{
+    total+=b.count; cap+=eff(b);
+    const boatTags=[b.tagDDI?'DDI':'', b.tagFly?'Fly-Raft':'', b.tagEE?'EE':'', b.tagWH?'WH':''].filter(Boolean).join('; ');
+    const head=document.createElement('div'); head.className='boat-header';
+    head.innerHTML = `<div><b>${idx+1}. ${b.name}</b> &nbsp; <span class="pill ${b.count<=eff(b)?'ok':'bad'}">${b.count}/${eff(b)}</span></div>
+      <div class="chips">
+        ${b.tagDDI?'<span class="chip">DDI</span>':''}
+        ${b.tagFly?'<span class="chip">Fly-Raft</span>':''}
+        ${b.tagEE?'<span class="chip">EE</span>':''}
+        ${b.tagWH?'<span class="chip">WH</span>':''}
+        ${b.hold?`<span class="chip">Hold: ${b.hold}</span>`:''}
+        ${b.toilet?'<span class="chip">🚻</span>':''}
+      </div>`;
+    results.appendChild(head);
+
+    const table=document.createElement('table');
+    table.innerHTML = `<thead><tr>
+      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Highlights</th>
+    </tr></thead>`;
+    const tb=document.createElement('tbody');
+    b.pax.forEach((p,i)=>{
+      const tags=[...p.tags], hl=[...p.highlights];
+      const tr=document.createElement('tr');
+      tr.innerHTML = `
+        <td>${i+1}</td>
+        <td>${escapeHtml(p.row.clientRaw)}</td>
+        <td>${p.count}</td>
+        <td>${escapeHtml(p.row.pu)}</td>
+        <td>${p.row.time||''}</td>
+        <td>${p.row.section}</td>
+        <td>${tags.map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
+        <td>${hl.filter(Boolean).map(t=>`<span class="pill warn">${escapeHtml(t)}</span>`).join(' ')}</td>
+      `;
+      tb.appendChild(tr);
+      out.push([b.name,idx+1,b.hold,boatTags,p.row.clientRaw,p.count,p.row.pu,p.row.time||'',p.row.notes||'',p.row.phone||'',tags.join('; '),hl.filter(Boolean).join('; '),p.row.section]);
+    });
+    table.appendChild(tb);
+    results.appendChild(table);
+  });
+
+  const summary=document.createElement('div'); summary.className='status';
+  summary.style.margin='8px 0 6px';
+  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${cap}</b>${total>cap?' <span class="pill bad">Over capacity</span>':''}`;
+  results.prepend(summary);
+
+  // download
+  const toCSV = rows => rows.map(r=>r.map(v=>{ if(v==null)return''; v=String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\n');
+  const csv = toCSV(out); const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob);
+  const dl=document.getElementById('download');
+  dl.onclick=()=>{ const stamp=new Date().toISOString().slice(0,10); const a=document.createElement('a'); a.href=url; a.download=`boat-split-${document.getElementById('tour').value}-${stamp}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
+  dl.disabled=false;
+  setStatus('Allocation complete.');
 }
 
 /* Wire-up */
