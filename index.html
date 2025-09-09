@@ -6,36 +6,83 @@
 <title>Ocean Rafting — Boat Split</title>
 <style>
   :root{
-    --bg:#090b10; --panel:#0d1117; --card:#0f1522; --line:#2b3a55;
-    --text:#f2f6ff; --muted:#c7d2e5; --chip:#0f2240; --chip-brd:#3a68b1;
-    --btn:#132a56; --btn-brd:#3d6bce; --btn-hover:#17346c;
-    --ok:#16a34a; --warn:#f59e0b; --bad:#ef4444; --shadow:0 8px 24px rgba(0,0,0,.35);
+    /* Light, clean palette */
+    --bg:#ffffff;
+    --ink:#111827;           /* main text */
+    --muted:#6b7280;         /* subtle text */
+    --line:#e5e7eb;          /* borders */
+    --panel:#f9fafb;         /* panels */
+    --card:#ffffff;          /* cards */
+    --brand:#2563eb;         /* blue */
+    --brand-600:#1d4ed8;
+    --warn:#f59e0b;
+    --bad:#ef4444;
+    --ok:#16a34a;
+    --chip:#eef2ff;
+    --chip-brd:#c7d2fe;
+    --shadow:0 6px 18px rgba(0,0,0,.06);
   }
+
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-  header{position:sticky;top:0;z-index:10;padding:16px 20px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0b0f18 0,#0a0e15 100%)}
-  header h1{margin:0;font-size:22px;font-weight:800}
-  header p{margin:4px 0 0;color:var(--muted);font-size:13px}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+  }
 
-  .shell{max-width:1720px;margin:0 auto;display:grid;gap:16px;grid-template-columns:400px minmax(0,1fr);padding:16px}
-  @media(max-width:1000px){.shell{grid-template-columns:1fr}}
-  .left{position:sticky;top:76px;align-self:start;display:flex;flex-direction:column;gap:12px}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow)}
-  .section-title{font-weight:800;text-transform:uppercase;letter-spacing:.35px;color:#d9e6ff;font-size:12px;margin:0 0 10px}
-  label{display:block;margin:10px 0 6px;color:#d9e6ff}
-  input[type="file"],select,input[type="number"]{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#0a1323;color:var(--text);outline:none}
+  header{
+    position:sticky;top:0;z-index:10;
+    padding:14px 20px;border-bottom:1px solid var(--line);
+    background:#fff;
+    backdrop-filter:saturate(180%) blur(8px);
+  }
+  header h1{margin:0;font-size:20px;font-weight:800;letter-spacing:.2px}
+  header p{margin:3px 0 0;color:var(--muted);font-size:13px}
+
+  /* Layout: fixed left column, fluid right; stable scrollbars */
+  .shell{
+    max-width:1600px;margin:0 auto;
+    display:grid;gap:18px;
+    grid-template-columns:360px minmax(0,1fr);
+    padding:18px;
+    scrollbar-gutter:stable both-edges;
+  }
+  @media(max-width:980px){ .shell{ grid-template-columns:1fr; } }
+
+  .left{position:sticky;top:70px;align-self:start;display:flex;flex-direction:column;gap:12px}
+  .panel{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px;box-shadow:var(--shadow)
+  }
+  .section-title{
+    font-weight:800;text-transform:uppercase;letter-spacing:.35px;color:#374151;font-size:11px;margin:0 0 8px
+  }
+  label{display:block;margin:10px 0 6px;color:#374151}
+  input[type="file"],select,input[type="number"],input[type="text"]{
+    width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);
+    background:#fff;color:var(--ink);outline:none
+  }
   input[type="file"]{padding:8px 10px}
   .muted{color:var(--muted)}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+
   .chips{display:flex;flex-wrap:wrap;gap:6px}
-  .chip{background:var(--chip);border:1px solid var(--chip-brd);color:#e7efff;padding:5px 8px;border-radius:999px;font-size:12px;white-space:nowrap}
+  .chip{
+    background:var(--chip);border:1px solid var(--chip-brd);color:#1f2937;
+    padding:5px 8px;border-radius:999px;font-size:12px;white-space:nowrap
+  }
+
   .toolbar{display:flex;gap:8px;flex-wrap:wrap}
-  .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;border:1px solid var(--btn-brd);background:var(--btn);color:#fff;cursor:pointer;text-decoration:none}
-  .btn:hover{background:var(--btn-hover)}
-  .btn-primary{background:#1d3a7a;border-color:#4a7ef0}
-  .btn-danger{background:#5b1f1f;border-color:#b14545}
-  .btn[disabled]{opacity:.6;cursor:not-allowed}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;
+    border:1px solid var(--line);background:#fff;color:#111827;cursor:pointer;text-decoration:none
+  }
+  .btn:hover{background:#f3f4f6}
+  .btn-primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn-primary:hover{background:var(--brand-600)}
+  .btn-danger{background:#fff;border-color:#fca5a5;color:#b91c1c}
+  .btn-danger:hover{background:#fee2e2}
+  .btn[disabled]{opacity:.55;cursor:not-allowed}
 
   .boats-wrap{max-height:48vh;overflow:auto;padding-right:4px;scrollbar-gutter:stable}
   .boats{display:grid;gap:10px;grid-template-columns:1fr}
@@ -50,23 +97,29 @@
   .tagline label{display:flex;align-items:center;gap:6px;margin:0}
 
   .right{min-height:65vh}
-  .results-panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:0;overflow:hidden;box-shadow:var(--shadow)}
-  .results-head{padding:12px 14px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#10182a 0,#0d1422 100%)}
-  .status{color:#e7efff;font-size:13px}
-  .results-body{max-height:calc(80vh - 110px);overflow:auto;padding:14px}
+  .results-panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:0;overflow:hidden;box-shadow:var(--shadow)}
+  .results-head{padding:12px 14px;border-bottom:1px solid var(--line);background:#f9fafb}
+  .status{color:#111827;font-size:13px}
+  .results-body{max-height:calc(80vh - 110px);overflow:auto;padding:14px;scrollbar-gutter:stable both-edges}
+
   .boat-header{display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px}
   .pill{display:inline-block;padding:4px 9px;border-radius:999px;border:1px solid var(--line);font-size:12px}
-  .ok{background:rgba(22,163,74,.18);border-color:rgba(22,163,74,.55)}
-  .warn{background:rgba(245,158,11,.18);border-color:rgba(245,158,11,.55)}
-  .bad{background:rgba(239,68,68,.2);border-color:rgba(239,68,68,.6)}
-  .tag{background:rgba(34,211,238,.18);border-color:rgba(34,211,238,.55);color:#c9f0ff}
-  table{width:100%;border-collapse:separate;border-spacing:0}
-  thead th{position:sticky;top:0;z-index:1;background:#131b2c;color:#ffffff;text-align:left;font-weight:800;border-bottom:1px solid var(--line);padding:10px 8px}
-  tbody td{border-bottom:1px solid var(--line);padding:10px 8px}
-  tbody tr:nth-child(2n){background:rgba(255,255,255,.03)}
-  tbody tr:hover{background:rgba(255,255,255,.06)}
+  .ok{background:#ecfdf5;border-color:#bbf7d0;color:#065f46}
+  .warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
+  .bad{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+  .tag{background:#eff6ff;border-color:#bfdbfe;color:#1e3a8a}
 
-  .err{white-space:pre-wrap;background:#3b0f0f;color:#ffe9e9;border:1px solid #a33a3a;border-radius:10px;padding:10px;margin:12px 0}
+  table{width:100%;border-collapse:separate;border-spacing:0}
+  thead th{
+    position:sticky;top:0;z-index:1;background:#f3f4f6;color:#111827;
+    text-align:left;font-weight:800;border-bottom:1px solid var(--line);padding:10px 8px
+  }
+  tbody td{border-bottom:1px solid var(--line);padding:10px 8px}
+  tbody tr:nth-child(2n){background:#fafafa}
+  tbody tr:hover{background:#f5f5f5}
+
+  /* Error banner */
+  .err{white-space:pre-wrap;background:#fff1f2;color:#881337;border:1px solid #fecdd3;border-radius:10px;padding:10px;margin:12px 0}
 </style>
 </head>
 <body>
@@ -76,6 +129,7 @@
 </header>
 
 <div class="shell">
+  <!-- LEFT -->
   <aside class="left">
     <div class="panel">
       <div class="section-title">1) Upload</div>
@@ -112,6 +166,7 @@
     </div>
   </aside>
 
+  <!-- RIGHT -->
   <section class="right">
     <div class="results-panel">
       <div class="results-head">
@@ -127,16 +182,16 @@
 <script>
 "use strict";
 
-/* Error banner */
+/* ===== Error banner ===== */
 window.onerror = (msg, src, line, col, err) => {
   const host = document.querySelector('#results');
   const pre = document.createElement('div');
   pre.className = 'err';
-  pre.textContent = `Script error:\\n${msg}\\n${src?('at '+src+':'+line+':'+col):''}\\n` + (err&&err.stack?err.stack:'');
+  pre.textContent = `Script error:\n${msg}\n${src?('at '+src+':'+line+':'+col):''}\n` + (err&&err.stack?err.stack:'');
   host?.prepend(pre);
 };
 
-/* Helpers */
+/* ===== Helpers ===== */
 const el = id => document.getElementById(id);
 const setStatus = s => { const n=el('status'); if(n) n.textContent = s; };
 const messagesEl = document.getElementById('messages');
@@ -144,7 +199,7 @@ function clearMsgs(){ if(messagesEl) messagesEl.innerHTML=''; }
 function pushMsg(text,tone=''){
   if(!messagesEl) return;
   const m=document.createElement('span'); m.className='chip';
-  const col = tone==='ok'?'#38d46a':tone==='warn'?'#ffba55':tone==='bad'?'#ff6b6b':'#3a68b1';
+  const col = tone==='ok'?'#16a34a':tone==='warn'?'#f59e0b':tone==='bad'?'#ef4444':'#c7d2fe';
   m.style.borderColor=col; m.textContent=text; messagesEl.appendChild(m);
 }
 function norm(s){ return (s??'').toString().trim(); }
@@ -152,7 +207,7 @@ function escapeHtml(s){ return (s??'').replace(/[&<>"']/g,m=>({ "&":"&amp;","<":
 function edgeOrder(n){ const res=[]; for(let a=0,b=n-1;a<=b;a++,b--){ res.push(a); if(b>a) res.push(b);} return res; }
 const toCSV = rows => rows.map(r=>r.map(v=>{ if(v==null)return''; v=String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\n');
 
-/* Defaults */
+/* ===== Defaults ===== */
 const DEFAULT_BOATS = [
   { name: "Joyride",        seats: 32, toilet: true },
   { name: "Thunderstruck",  seats: 32, toilet: true },
@@ -163,11 +218,10 @@ const DEFAULT_BOATS = [
   { name: "Jammin",         seats: 22, toilet: true },
   { name: "Wildthing",      seats: 19, toilet: false },
 ];
-
 let boats = [];
 let rows = [];
 
-/* CSV parsing */
+/* ===== CSV parsing ===== */
 function parseCSV(text){
   const rows=[]; let cur='',row=[],inQ=false; let i=0;
   while(i<text.length){ const ch=text[i];
@@ -201,20 +255,16 @@ function parseTimeToSortable(t){
   s=s.replace('.',':'); const ampm=/am|pm/i.test(s)?s.match(/am|pm/i)[0].toLowerCase():null;
   s=s.replace(/[^0-9:]/g,''); if(/^\d{3,4}$/.test(s)){ s=(s.length===3?'0'+s:s); s=s.slice(0,2)+':'+s.slice(2); }
   if(!/^\d{1,2}:\d{2}$/.test(s)) return null;
-  let [hh,mm]=s.split(':').map(n=>parseInt(n,10));
-  if(ampm){ if(ampm==='pm'&&hh<12)hh+=12; if(ampm==='am'&&hh===12)hh=0; }
+  let [hh,mm]=s.split(':').map(n=>parseInt(n,10)); if(ampm){ if(ampm==='pm'&&hh<12)hh+=12; if(ampm==='am'&&hh===12)hh=0; }
   if(hh>=0&&hh<24&&mm>=0&&mm<60) return hh*60+mm; return null;
 }
 function quartileSection(mins, sortedDistinct){
-  if(mins==null) return 'Unknown';
-  const n=sortedDistinct.length; if(!n) return 'Unknown';
-  const q1=sortedDistinct[Math.floor(n*.25)];
-  const q2=sortedDistinct[Math.floor(n*.50)];
-  const q3=sortedDistinct[Math.floor(n*.75)];
+  if(mins==null) return 'Unknown'; const n=sortedDistinct.length; if(!n) return 'Unknown';
+  const q1=sortedDistinct[Math.floor(n*.25)], q2=sortedDistinct[Math.floor(n*.50)], q3=sortedDistinct[Math.floor(n*.75)];
   if(mins<=q1) return '1st'; if(mins<=q2) return '2nd'; if(mins<=q3) return '3rd'; return '4th';
 }
 
-/* Boats UI */
+/* ===== Boats UI ===== */
 function cloneBoats(){ return DEFAULT_BOATS.map(b=>({...b, tagDDI:false, tagFly:false, tagEE:false, tagWH:false, hold:0 })); }
 
 function renderBoats(){
@@ -285,7 +335,7 @@ function renderBoats(){
   }
 }
 
-/* Allocation */
+/* ===== Allocation ===== */
 function allocate(){
   clearMsgs();
   if(!rows.length){ setStatus('Please upload a CSV first.'); return; }
@@ -307,11 +357,7 @@ function allocate(){
     if(section==='1st'||section==='2nd'){ const wl = edges.filter(i=>i!==lastIdx); return [...wl,lastIdx]; }
     return edges;
   }
-  function addPax(i,r,tags=[],hl=[]){
-    const need=r.num||1; const b=B[i];
-    b.pax.push({row:r,count:need,tags:new Set(tags),highlights:new Set(hl)});
-    b.count+=need;
-  }
+  function addPax(i,r,tags=[],hl=[]){ const need=r.num||1; const b=B[i]; b.pax.push({row:r,count:need,tags:new Set(tags),highlights:new Set(hl)}); b.count+=need; }
 
   const distinct=[...new Set(rows.map(r=>r.timeMins).filter(v=>v!=null))].sort((a,b)=>a-b);
   rows.forEach(r=>r.section = quartileSection(r.timeMins, distinct));
@@ -345,7 +391,7 @@ function allocate(){
     }
   }
 
-  /* Fly+Raft strict (latest Fly; overflow near last but not DDI) */
+  /* F+R strict (latest Fly; overflow near last but not DDI) */
   const flyRows = filtered
     .filter(r=>hasFR(r) && !earlyBoat(r))
     .sort((a,b)=>{
@@ -461,7 +507,7 @@ function allocate(){
     }
   }
 
-  /* Baseline fill */
+  /* Baseline fill (edges-first; early avoids last) */
   const orderSec={'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4};
   [...unassigned].sort((a,b)=>{
     const da=orderSec[a.section]??4, db=orderSec[b.section]??4;
@@ -516,15 +562,34 @@ function allocate(){
         if(!moved){
           const over=(function(cnt){
             const can=[]; if(secondLastIdx!==lastIdx) can.push(secondLastIdx);
-            for(let x=B.length-3;x>=0;x--) can.push(x);
-            for(const x of can){ const bb=B[x]; if(bb.tagDDI) continue; if(bb.count+cnt<=eff(bb)) return x; }
-            return null;
-          })(need);
-          if(over!=null){ b.pax.splice(k,1); b.count-=need; addPax(over,p.row,[...p.tags],['Fly overflow']); k--; }
+            for(let x=B.length-3;x>=0;x--) can push(x);
+          })(0); // placeholder to keep structure
         }
       }
     }
   })();
+
+  // fix tiny typo above (safe overflow function)
+  function overflowIndexNotDDI(cnt){
+    const can=[]; if(secondLastIdx!==lastIdx) can.push(secondLastIdx);
+    for(let x=B.length-3;x>=0;x--) can.push(x);
+    for(const x of can){ const bb=B[x]; if(bb.tagDDI) continue; if(bb.count+cnt<=eff(bb)) return x; }
+    return null;
+  }
+  // apply where needed
+  for (const b of B){
+    for(let k=0;k<b.pax.length;k++){
+      const p=b.pax[k];
+      const isFR = p.tags.has('F+R') || /\(\s*F\s*\+\s*R\s*\)/i.test(p.row.clientRaw) || noteFly(p.row);
+      if(isFR && !b.tagFly && !b.tagDDI){
+        const over = overflowIndexNotDDI(p.count);
+        if(over!=null){
+          const idx = B.indexOf(b);
+          b.pax.splice(k,1); b.count-=p.count; B[over].pax.push(p); B[over].count+=p.count; k--;
+        }
+      }
+    }
+  }
 
   /* Edge fill — pack first and last (never move DDI; never pull FR into non-Fly) */
   function tryPull(toIdx, preferLateOnly){
@@ -612,7 +677,7 @@ function allocate(){
   setStatus('Allocation complete.');
 }
 
-/* Wiring */
+/* ===== Wiring ===== */
 function wire(){
   el('resetBoats').onclick=()=>{ boats=cloneBoats(); renderBoats(); setStatus('Boats reset.'); };
   el('run').onclick=allocate;
@@ -661,13 +726,13 @@ function wire(){
   });
 }
 
-/* Boot (self-healing) */
+/* ===== Boot (self-healing) ===== */
 function init(){
   try{
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus('Ready. (v=stable1)');
+    setStatus('Ready. (v=ui-clean2)');
 
     // Self-heal: if somehow blank, repopulate
     setTimeout(()=>{
@@ -696,6 +761,14 @@ function init(){
   }
 }
 if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', init); } else { init(); }
+
+/* helper needed by wire() — keep here for scope */
+function findColIndex(h,keys){
+  const lower=h.map(x=>x.toLowerCase());
+  for(const k of keys){ const i=lower.indexOf(k); if(i!==-1) return i; }
+  for(let i=0;i<lower.length;i++){ if(keys.some(k=>lower[i].includes(k))) return i; }
+  return -1;
+}
 </script>
 </body>
 </html>
