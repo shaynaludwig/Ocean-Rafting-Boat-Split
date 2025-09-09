@@ -5,171 +5,97 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Boat Split</title>
 <style>
-  :root {
-    --bg: #0f172a;        /* slate-900 */
-    --card: #111827;      /* gray-900 */
-    --muted: #334155;     /* slate-600 */
-    --text: #e5e7eb;      /* gray-200 */
-    --accent: #22d3ee;    /* cyan-400 */
-    --accent-2: #a78bfa;  /* violet-400 */
-    --ok: #16a34a;        /* green-600 */
-    --warn: #f59e0b;      /* amber-500 */
-    --bad: #ef4444;       /* red-500 */
-    --chip: #1f2937;      /* gray-800 */
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: linear-gradient(180deg, #0b1222, #0a0f1c 35%, #070c15);
-    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-    color: var(--text);
-  }
-  header {
-    padding: 24px 16px; text-align: center;
-  }
-  header h1 { margin: 0; font-size: 28px; letter-spacing: 0.2px; }
-  header p { margin: 6px 0 0; color: #9ca3af; }
-  .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
-
-  .grid {
-    display: grid; gap: 16px;
-    grid-template-columns: 1fr;
-  }
-  @media (min-width: 980px) {
-    .grid { grid-template-columns: 360px 1fr; }
-  }
-
-  .card {
-    background: radial-gradient(1200px 600px at 20% -10%, rgba(46, 204, 250,0.08), transparent 40%),
-                radial-gradient(1000px 500px at 120% 20%, rgba(167,139,250,0.08), transparent 45%),
-                var(--card);
-    border: 1px solid #1f2937;
-    border-radius: 16px;
-    padding: 16px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
-  }
-
-  .section-title { font-weight: 700; margin: 0 0 12px; font-size: 15px; letter-spacing: .4px; text-transform: uppercase; color: #cbd5e1; }
-  label { display: block; font-size: 14px; color: #cbd5e1; margin: 10px 0 6px; }
-  select, input[type="text"], input[type="number"] {
-    width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #263142; background: #0b1220; color: var(--text);
-  }
-  input[type="file"] { width: 100%; }
-
-  .row { display: flex; gap: 10px; }
-  .row > * { flex: 1; }
-
-  .btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 10px 14px; border-radius: 12px; border: 1px solid #263142;
-    background: linear-gradient(180deg, #0d1526, #0b1220);
-    color: var(--text); cursor: pointer; text-decoration: none; user-select: none;
-  }
-  .btn:hover { border-color: #334155; }
-  .btn-primary {
-    background: linear-gradient(180deg, #1a2c46, #12243c);
-    border-color: #1e3a5f;
-  }
-  .btn-accent {
-    background: linear-gradient(180deg, #0f2f3b, #0c2430);
-    border-color: #124657;
-  }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-  .chip {
-    background: var(--chip); border: 1px solid #243042; color: #d1d5db;
-    padding: 6px 10px; border-radius: 999px; font-size: 12px;
-  }
-  .muted { color: #93a3b5; font-size: 13px; }
-
-  table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 10px 8px; border-bottom: 1px solid #1f2937; text-align: left; font-size: 13px; }
-  th { font-weight: 700; color: #cbd5e1; position: sticky; top: 0; background: #0e1626; }
-  .pill {
-    display: inline-block; font-size: 11px; padding: 4px 8px; border-radius: 999px; border: 1px solid #1f2937;
-  }
-  .pill.ok { background: rgba(22,163,74,0.15); border-color: rgba(22,163,74,0.4); }
-  .pill.warn { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.4); }
-  .pill.bad { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.4); }
-  .tag { background: rgba(34,211,238,0.12); border-color: rgba(34,211,238,0.4); color: #a5f3fc; }
-
-  .boats {
-    display: grid; gap: 10px; grid-template-columns: 1fr;
-  }
-  @media (min-width: 640px) {
-    .boats { grid-template-columns: 1fr 1fr; }
-  }
-  .boat {
-    border: 1px solid #1f2937; border-radius: 12px; padding: 12px; background: #0b1220;
-  }
-  .boat h4 { margin: 0 0 8px; font-size: 15px; }
-  .boat small { color: #9ca3af; }
-  .flex { display: flex; align-items: center; gap: 8px; }
-  .justify { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .tight { gap: 6px; }
-  .btn-icon { padding: 6px 9px; border-radius: 8px; }
-
-  .results { margin-top: 16px; }
-  .statusline { margin: 8px 0 12px; font-size: 13px; color: #b6c2d0; }
-  .highlight { color: #fde68a; }
-  .error { color: #fecaca; }
-
-  .footer { text-align: center; color: #64748b; font-size: 12px; padding: 24px 12px 40px; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  :root { --bg:#0f172a; --card:#111827; --text:#e5e7eb; --chip:#1f2937; }
+  *{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#0b1222,#0a0f1c 35%,#070c15);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  header{padding:24px 16px;text-align:center}header h1{margin:0;font-size:28px}header p{margin:6px 0 0;color:#9ca3af}
+  .container{max-width:1200px;margin:0 auto;padding:16px}.grid{display:grid;gap:16px;grid-template-columns:1fr}
+  @media(min-width:980px){.grid{grid-template-columns:360px 1fr}}
+  .card{background:radial-gradient(1200px 600px at 20% -10%,rgba(46,204,250,.08),transparent 40%),radial-gradient(1000px 500px at 120% 20%,rgba(167,139,250,.08),transparent 45%),var(--card);border:1px solid #1f2937;border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .section-title{font-weight:700;margin:0 0 12px;font-size:15px;letter-spacing:.4px;text-transform:uppercase;color:#cbd5e1}
+  label{display:block;font-size:14px;color:#cbd5e1;margin:10px 0 6px}
+  select,input[type="text"],input[type="number"]{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #263142;background:#0b1220;color:var(--text)}
+  input[type="file"]{width:100%}.row{display:flex;gap:10px}.row>*{flex:1}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid #263142;background:linear-gradient(180deg,#0d1526,#0b1220);color:var(--text);cursor:pointer;text-decoration:none}
+  .btn:hover{border-color:#334155}.btn-primary{background:linear-gradient(180deg,#1a2c46,#12243c);border-color:#1e3a5f}
+  .btn-accent{background:linear-gradient(180deg,#0f2f3b,#0c2430);border-color:#124657}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.chip{background:var(--chip);border:1px solid #243042;color:#d1d5db;padding:6px 10px;border-radius:999px;font-size:12px}
+  .muted{color:#93a3b5;font-size:13px}table{width:100%;border-collapse:collapse}
+  th,td{padding:10px 8px;border-bottom:1px solid #1f2937;text-align:left;font-size:13px}
+  th{font-weight:700;color:#cbd5e1;position:sticky;top:0;background:#0e1626}
+  .pill{display:inline-block;font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid #1f2937}
+  .pill.ok{background:rgba(22,163,74,.15);border-color:rgba(22,163,74,.4)}
+  .pill.warn{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.4)}
+  .pill.bad{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.4)}
+  .tag{background:rgba(34,211,238,.12);border-color:rgba(34,211,238,.4);color:#a5f3fc}
+  .boats{display:grid;gap:10px;grid-template-columns:1fr}@media(min-width:640px){.boats{grid-template-columns:1fr 1fr}}
+  .boat{border:1px solid #1f2937;border-radius:12px;padding:12px;background:#0b1220}
+  .boat h4{margin:0 0 8px;font-size:15px}.boat small{color:#9ca3af}.flex{display:flex;align-items:center;gap:8px}
+  .justify{display:flex;justify-content:space-between;align-items:center;gap:8px}.tight{gap:6px}.btn-icon{padding:6px 9px;border-radius:8px}
+  .statusline{margin:8px 0 12px;font-size:13px;color:#b6c2d0}.footer{text-align:center;color:#64748b;font-size:12px;padding:24px 12px 40px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 </style>
 </head>
 <body>
-  <header>
-    <h1>Boat Split</h1>
-    <p>Upload bus pickup CSV → configure boats & tags → auto-allocate and download CSV</p>
-  </header>
+<header>
+  <h1>Boat Split</h1>
+  <p>Upload bus pickup CSV → configure boats & tags → select boats in use → allocate → download CSV</p>
+</header>
 
-  <div class="container grid">
-    <!-- LEFT: Controls -->
-    <div class="card">
-      <div class="section-title">1) Upload CSV</div>
-      <input type="file" id="file" accept=".csv" />
-      <div class="muted" style="margin-top:6px">
-        Expected columns (case-insensitive): <span class="chip mono">Client</span>
-        <span class="chip mono">No. Pass.</span>
-        <span class="chip mono">P/U Point</span>
-        <span class="chip mono">Time</span>
-        <span class="chip mono">Pickup Notes</span>
-        <span class="chip mono">Phone</span>
-        <br/>You can ignore Accommodation; “No. Pass.” defaults to 1 if blank.
-      </div>
-
-      <div class="section-title" style="margin-top:18px">2) Tour & Options</div>
-      <label for="tour">Tour</label>
-      <select id="tour">
-        <option value="north">Northern</option>
-        <option value="south">Southern</option>
-      </select>
-
-      <label>Pickup Sectioning</label>
-      <div class="muted">Times are sorted and split into quartiles → <span class="chip">1st</span> <span class="chip">2nd</span> <span class="chip">3rd</span> <span class="chip">4th</span></div>
-
-      <div class="section-title" style="margin-top:18px">3) Boats & Departure Order</div>
-      <div class="muted">Reorder boats (▲ earlier / ▼ later). Tag boats for <b>DDI</b>, <b>Fly-Raft</b>, or <b>EE</b>.</div>
-      <div id="boats" class="boats"></div>
-
-      <div style="margin-top:14px; display:flex; gap:8px; flex-wrap: wrap;">
-        <button id="resetBoats" class="btn">Reset boats</button>
-        <button id="run" class="btn btn-primary">Allocate</button>
-        <button id="download" class="btn btn-accent" disabled>Download CSV</button>
-      </div>
-      <div class="chips" id="messages"></div>
+<div class="container grid">
+  <!-- LEFT: Controls -->
+  <div class="card">
+    <div class="section-title">1) Upload CSV</div>
+    <input type="file" id="file" accept=".csv" />
+    <div class="muted" style="margin-top:6px">
+      Expected columns (case-insensitive): <span class="chip mono">Client</span>
+      <span class="chip mono">No. Pass.</span>
+      <span class="chip mono">P/U Point</span>
+      <span class="chip mono">Time</span>
+      <span class="chip mono">Pickup Notes</span>
+      <span class="chip mono">Phone</span>
+      <br/>You can ignore Accommodation; “No. Pass.” defaults to 1 if blank.
     </div>
 
-    <!-- RIGHT: Results -->
-    <div class="card">
-      <div class="section-title">Results</div>
-      <div class="statusline" id="status">No file loaded.</div>
-      <div class="results" id="results"></div>
+    <div class="section-title" style="margin-top:18px">2) Tour & Options</div>
+    <label for="tour">Tour</label>
+    <select id="tour">
+      <option value="north">Northern</option>
+      <option value="south">Southern</option>
+    </select>
+
+    <label>Pickup Sectioning</label>
+    <div class="muted">Times are split into quartiles → <span class="chip">1st</span> <span class="chip">2nd</span> <span class="chip">3rd</span> <span class="chip">4th</span></div>
+
+    <div class="section-title" style="margin-top:18px">3) Boats & Departure Order</div>
+    <div class="muted">Reorder boats (▲ earlier / ▼ later). Tick <b>Use</b> to include a boat in this tour. Tag boats for <b>DDI</b>, <b>Fly-Raft</b>, or <b>EE</b>.</div>
+    <div class="row" style="align-items:center;margin:8px 0 10px">
+      <div style="flex:0 0 150px">
+        <label for="boatsCount" style="margin:0 0 6px">Boats in use</label>
+        <input type="number" id="boatsCount" min="0" max="8" value="8" />
+      </div>
+      <div class="muted" style="flex:1">Quick set: keeps current order, activates the first N boats. You can still toggle “Use” per boat below.</div>
     </div>
+    <div id="boats" class="boats"></div>
+
+    <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap">
+      <button id="resetBoats" class="btn">Reset boats</button>
+      <button id="run" class="btn btn-primary">Allocate</button>
+      <button id="download" class="btn btn-accent" disabled>Download CSV</button>
+    </div>
+    <div class="chips" id="messages"></div>
   </div>
 
-  <div class="footer">
-    CSVs don’t support colours—use on-screen colours to spot issues; the exported CSV includes <span class="mono">Tags</span> and <span class="mono">Highlights</span> columns.
+  <!-- RIGHT: Results -->
+  <div class="card">
+    <div class="section-title">Results</div>
+    <div class="statusline" id="status">No file loaded.</div>
+    <div class="results" id="results"></div>
   </div>
+</div>
+
+<div class="footer">
+  Exported CSV adds <span class="mono">Tags</span> and <span class="mono">Highlights</span>. On-screen table is colour-coded.
+</div>
 
 <script>
 /* ----------------------------- Default Boats ----------------------------- */
@@ -184,71 +110,50 @@ const DEFAULT_BOATS = [
   { name: "Wildthing", seats: 19, toilet: false },
 ];
 
-/* --------------------------- Simple CSV Utilities ------------------------ */
-/* Robust enough for quoted commas and quotes. */
-function parseCSV(text) {
-  const rows = [];
-  let cur = '', row = [], inQuotes = false, i = 0;
-  while (i < text.length) {
-    const ch = text[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (text[i+1] === '"') { cur += '"'; i += 2; continue; }
-        inQuotes = false; i++; continue;
-      } else { cur += ch; i++; continue; }
-    } else {
-      if (ch === '"') { inQuotes = true; i++; continue; }
-      if (ch === ',') { row.push(cur); cur = ''; i++; continue; }
-      if (ch === '\r') { i++; continue; }
-      if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; i++; continue; }
-      cur += ch; i++;
-    }
-  }
-  row.push(cur); rows.push(row);
-  // Trim possible trailing empty row
-  if (rows.length && rows[rows.length-1].every(c => c === '')) rows.pop();
-  return rows;
-}
-function toCSV(rows) {
-  const esc = (s) => {
-    if (s == null) return '';
-    s = String(s);
-    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
-  return rows.map(r => r.map(esc).join(',')).join('\n');
-}
+/* --------------------------- CSV Utilities ------------------------------- */
+function parseCSV(text){const rows=[];let cur='',row=[],inQ=false,i=0;while(i<text.length){const ch=text[i];if(inQ){if(ch==='"'){if(text[i+1]==='"'){cur+='"';i+=2;continue}inQ=false;i++;continue}else{cur+=ch;i++;continue}}else{if(ch==='"'){inQ=true;i++;continue}if(ch===','){row.push(cur);cur='';i++;continue}if(ch==='\r'){i++;continue}if(ch==='\n'){row.push(cur);rows.push(row);row=[];cur='';i++;continue}cur+=ch;i++}}row.push(cur);rows.push(row);if(rows.length&&rows[rows.length-1].every(c=>c===''))rows.pop();return rows}
+function toCSV(rows){const esc=s=>{if(s==null)return'';s=String(s);return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s};return rows.map(r=>r.map(esc).join(',')).join('\n')}
 
 /* ----------------------------- DOM Elements ------------------------------ */
-const fileInput = document.getElementById('file');
-const tourSelect = document.getElementById('tour');
-const boatsDiv = document.getElementById('boats');
-const runBtn = document.getElementById('run');
-const resetBtn = document.getElementById('resetBoats');
-const downloadBtn = document.getElementById('download');
-const statusEl = document.getElementById('status');
-const resultsEl = document.getElementById('results');
-const messagesEl = document.getElementById('messages');
+const fileInput=document.getElementById('file');
+const tourSelect=document.getElementById('tour');
+const boatsDiv=document.getElementById('boats');
+const runBtn=document.getElementById('run');
+const resetBtn=document.getElementById('resetBoats');
+const downloadBtn=document.getElementById('download');
+const statusEl=document.getElementById('status');
+const resultsEl=document.getElementById('results');
+const messagesEl=document.getElementById('messages');
+const boatsCountInput=document.getElementById('boatsCount');
 
 /* ------------------------------ App State -------------------------------- */
-let rawRows = [];         // parsed CSV rows (array of arrays)
-let header = [];          // normalized header
-let rows = [];            // objects with normalized fields
-let boats = [];           // editable boats with tags + order
+let rawRows=[],header=[],rows=[];
+let boats=[]; // {name,seats,toilet,tagDDI,tagFly,tagEE,active}
 
-function cloneBoats() {
-  return DEFAULT_BOATS.map(b => ({...b, tagDDI:false, tagFly:false, tagEE:false}));
-}
-function renderBoats() {
-  boatsDiv.innerHTML = '';
-  boats.forEach((b, idx) => {
-    const el = document.createElement('div');
-    el.className = 'boat';
-    el.innerHTML = `
+/* ------------------------------- Helpers --------------------------------- */
+function cloneBoats(){return DEFAULT_BOATS.map(b=>({...b,tagDDI:false,tagFly:false,tagEE:false,active:true}))}
+function setStatus(msg){statusEl.textContent=msg}
+function clearMsgs(){messagesEl.innerHTML=''}
+function pushMsg(text,tone=''){const m=document.createElement('span');m.className='chip';if(tone==='ok')m.style.borderColor='rgba(22,163,74,.5)';if(tone==='warn')m.style.borderColor='rgba(245,158,11,.5)';if(tone==='bad')m.style.borderColor='rgba(239,68,68,.5)';m.textContent=text;messagesEl.appendChild(m)}
+function escapeHtml(s){return (s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+
+/* --------------------------- CSV Normalization --------------------------- */
+const COL_ALIASES={client:["client","name","full name","passenger","pax name"],num:["no. pass.","no pass","passengers","pax","qty","count"],pu:["p/u point","pickup point","p/u","pick up","pickup","location"],time:["time","pickup time","p/u time"],notes:["pickup notes","notes","comments","pu comments","p/u notes"],phone:["phone","mobile"]};
+function norm(s){return (s||'').trim()}
+function findColIndex(h,keys){const lower=h.map(x=>x.toLowerCase());for(const k of keys){const i=lower.indexOf(k);if(i!==-1)return i}for(let i=0;i<lower.length;i++){if(keys.some(k=>lower[i].includes(k)))return i}return -1}
+function parseTimeToSortable(t){if(!t)return null;let s=t.toString().trim();if(!s)return null;s=s.replace('.',':');const ampm=/am|pm/i.test(s)?s.match(/am|pm/i)[0].toLowerCase():null;s=s.replace(/[^0-9:]/g,'');if(/^\d{3,4}$/.test(s)){s=(s.length===3?'0'+s:s);s=s.slice(0,2)+':'+s.slice(2)}if(!/^\d{1,2}:\d{2}$/.test(s))return null;let[hh,mm]=s.split(':').map(n=>parseInt(n,10));if(ampm){if(ampm==='pm'&&hh<12)hh+=12;if(ampm==='am'&&hh===12)hh=0}if(hh>=0&&hh<24&&mm>=0&&mm<60)return hh*60+mm;return null}
+function quartileSection(mins,sortedDistinct){if(mins==null)return'Unknown';const n=sortedDistinct.length;if(!n)return'Unknown';const q1=sortedDistinct[Math.floor(n*.25)],q2=sortedDistinct[Math.floor(n*.50)],q3=sortedDistinct[Math.floor(n*.75)];if(mins<=q1)return'1st';if(mins<=q2)return'2nd';if(mins<=q3)return'3rd';return'4th'}
+
+/* ------------------------------ Boats UI --------------------------------- */
+function renderBoats(){
+  boatsDiv.innerHTML='';
+  boats.forEach((b,idx)=>{
+    const el=document.createElement('div');el.className='boat';
+    el.innerHTML=`
       <div class="justify">
         <div>
-          <h4>${idx+1}. ${b.name} ${b.toilet ? '🚻' : ''}</h4>
-          <small>${b.seats} seats${b.toilet ? ', toilet' : ''}</small>
+          <h4>${idx+1}. ${b.name} ${b.toilet?'🚻':''}</h4>
+          <small>${b.seats} seats${b.toilet?', toilet':''}</small>
         </div>
         <div class="flex tight">
           <button class="btn btn-icon" data-act="up" data-idx="${idx}" title="Earlier">▲</button>
@@ -256,447 +161,156 @@ function renderBoats() {
         </div>
       </div>
       <div class="row" style="margin-top:8px">
+        <label class="flex" style="flex:0 0 auto;"><input type="checkbox" data-act="active" data-idx="${idx}" ${b.active?'checked':''}/> Use</label>
         <label class="flex"><input type="checkbox" data-act="ddi" data-idx="${idx}" ${b.tagDDI?'checked':''}/> DDI</label>
         <label class="flex"><input type="checkbox" data-act="fly" data-idx="${idx}" ${b.tagFly?'checked':''}/> Fly-Raft</label>
-        <label class="flex"><input type="checkbox" data-act="ee" data-idx="${idx}" ${b.tagEE?'checked':''}/> EE</label>
-      </div>
-    `;
+        <label class="flex"><input type="checkbox" data-act="ee"  data-idx="${idx}" ${b.tagEE?'checked':''}/> EE</label>
+      </div>`;
     boatsDiv.appendChild(el);
   });
-
-  boatsDiv.querySelectorAll('button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = +btn.dataset.idx, act = btn.dataset.act;
-      if (act === 'up' && idx > 0) {
-        [boats[idx-1], boats[idx]] = [boats[idx], boats[idx-1]];
-        renderBoats();
-      }
-      if (act === 'down' && idx < boats.length-1) {
-        [boats[idx+1], boats[idx]] = [boats[idx], boats[idx+1]];
-        renderBoats();
-      }
+  boatsDiv.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const idx=+btn.dataset.idx,act=btn.dataset.act;
+      if(act==='up'&&idx>0){[boats[idx-1],boats[idx]]=[boats[idx],boats[idx-1]];renderBoats();syncBoatsCountFromActive()}
+      if(act==='down'&&idx<boats.length-1){[boats[idx+1],boats[idx]]=[boats[idx],boats[idx+1]];renderBoats();syncBoatsCountFromActive()}
     });
   });
-  boatsDiv.querySelectorAll('input[type="checkbox"]').forEach(chk => {
-    chk.addEventListener('change', () => {
-      const idx = +chk.dataset.idx, act = chk.dataset.act;
-      if (act === 'ddi') boats[idx].tagDDI = chk.checked;
-      if (act === 'fly') boats[idx].tagFly = chk.checked;
-      if (act === 'ee')  boats[idx].tagEE  = chk.checked;
+  boatsDiv.querySelectorAll('input[type="checkbox"]').forEach(chk=>{
+    chk.addEventListener('change',()=>{
+      const idx=+chk.dataset.idx,act=chk.dataset.act;
+      if(act==='active')boats[idx].active=chk.checked;
+      if(act==='ddi')boats[idx].tagDDI=chk.checked;
+      if(act==='fly')boats[idx].tagFly=chk.checked;
+      if(act==='ee') boats[idx].tagEE =chk.checked;
+      syncBoatsCountFromActive();
     });
   });
 }
-
-function setStatus(msg) { statusEl.textContent = msg; }
-function pushMsg(text, tone='') {
-  const m = document.createElement('span');
-  m.className = 'chip';
-  if (tone === 'ok') m.style.borderColor = 'rgba(22,163,74,0.5)';
-  if (tone === 'warn') m.style.borderColor = 'rgba(245,158,11,0.5)';
-  if (tone === 'bad') m.style.borderColor = 'rgba(239,68,68,0.5)';
-  m.textContent = text;
-  messagesEl.appendChild(m);
+function applyBoatsCount(n){
+  // activate first n boats (in current order), deactivate rest — preserve individual tag checkboxes
+  boats.forEach((b,i)=>b.active = i < n);
+  renderBoats();
 }
-function clearMsgs() { messagesEl.innerHTML=''; }
-
-/* --------------------------- CSV Normalization --------------------------- */
-const COL_ALIASES = {
-  client: ["client","name","full name","passenger","pax name"],
-  num: ["no. pass.","no pass","passengers","pax","qty","count"],
-  pu: ["p/u point","pickup point","p/u","pick up","pickup","location"],
-  time: ["time","pickup time","p/u time"],
-  notes: ["pickup notes","notes","comments","pu comments","p/u notes"],
-  phone: ["phone","mobile"]
-};
-function norm(s){ return (s||'').trim(); }
-function findColIndex(h, keys) {
-  const lower = h.map(x => x.toLowerCase());
-  for (const k of keys) {
-    const i = lower.indexOf(k);
-    if (i !== -1) return i;
-  }
-  // fuzzy contains
-  for (let i=0;i<lower.length;i++){
-    if (keys.some(k => lower[i].includes(k))) return i;
-  }
-  return -1;
-}
-function parseTimeToSortable(t) {
-  // Accept "HH:MM", "H:MM", "HHMM", or "HH.MM", maybe with am/pm
-  if (!t) return null;
-  let s = t.toString().trim();
-  if (!s) return null;
-  // Normalize separators
-  s = s.replace('.',':');
-  const ampm = /am|pm/i.test(s) ? s.match(/am|pm/i)[0].toLowerCase() : null;
-  s = s.replace(/[^0-9:]/g,'');
-  if (/^\d{3,4}$/.test(s)) {
-    // e.g., 730 or 0730
-    s = (s.length===3 ? '0'+s : s);
-    s = s.slice(0,2)+':'+s.slice(2);
-  }
-  if (!/^\d{1,2}:\d{2}$/.test(s)) return null;
-  let [hh, mm] = s.split(':').map(n => parseInt(n,10));
-  if (ampm) {
-    if (ampm==='pm' && hh<12) hh += 12;
-    if (ampm==='am' && hh===12) hh = 0;
-  }
-  if (hh>=0 && hh<24 && mm>=0 && mm<60) return hh*60+mm;
-  return null;
-}
-function quartileSection(mins, sortedDistinct) {
-  if (mins==null) return 'Unknown';
-  const n = sortedDistinct.length;
-  if (n===0) return 'Unknown';
-  const q1 = sortedDistinct[Math.floor(n*0.25)];
-  const q2 = sortedDistinct[Math.floor(n*0.50)];
-  const q3 = sortedDistinct[Math.floor(n*0.75)];
-  if (mins <= q1) return '1st';
-  if (mins <= q2) return '2nd';
-  if (mins <= q3) return '3rd';
-  return '4th';
+function syncBoatsCountFromActive(){
+  const n=boats.filter(b=>b.active).length;
+  boatsCountInput.value = String(n);
 }
 
 /* --------------------------- Allocation Algorithm ------------------------ */
-/*
-  Steps overview:
-  1) Classify rows, detect flags, sections by pickup time quartiles.
-  2) Reserve/route special cases: DDI, Fly-Raft, EE, *TW*, *MAP*, Infant, “own way” late bias.
-  3) Baseline fill by time section → earlier boats first.
-  4) Balance to fill seats; bubble earliest to earlier boats, move later pax later, keep capacity.
-  5) Final highlights + CSV export structure.
-*/
-function allocate() {
+function allocate(){
   clearMsgs();
-  if (!rows.length) { setStatus('Please upload a CSV first.'); return; }
+  if(!rows.length){setStatus('Please upload a CSV first.');return}
+  const activeBoats = boats.filter(b=>b.active);
+  if(!activeBoats.length){setStatus('No boats in use. Activate at least one boat.');return}
 
-  // Prepare boat runtime structures
-  const boatList = boats.map(b => ({
-    name: b.name, seats: b.seats, toilet: b.toilet,
-    tagDDI: !!b.tagDDI, tagFly: !!b.tagFly, tagEE: !!b.tagEE,
-    pax: [], // {row, count, tags[], highlights[]}
-    count: 0
-  }));
+  // Runtime boats
+  const boatList = activeBoats.map(b=>({name:b.name,seats:b.seats,toilet:b.toilet,tagDDI:!!b.tagDDI,tagFly:!!b.tagFly,tagEE:!!b.tagEE,pax:[],count:0}));
 
-  // Index time sections
-  const validTimes = [...new Set(rows.map(r => r.timeMins).filter(v => v!=null))].sort((a,b)=>a-b);
-  rows.forEach(r => r.section = quartileSection(r.timeMins, validTimes));
+  const validTimes=[...new Set(rows.map(r=>r.timeMins).filter(v=>v!=null))].sort((a,b)=>a-b);
+  rows.forEach(r=>r.section=quartileSection(r.timeMins,validTimes));
 
-  // Helpers
-  function addPax(boatIdx, r, extraTags=[], highlight=[]) {
-    const count = r.num || 1;
-    const boat = boatList[boatIdx];
-    boat.pax.push({ row: r, count, tags: new Set(extraTags), highlights: new Set(highlight) });
-    boat.count += count;
-  }
-  const findBoatByTagOrdered = (tag) => boatList
-      .map((b,i)=>({i,b}))
-      .filter(o => o.b[`tag${tag}`])
-      .sort((a,b)=>a.i-b.i);
-  const earliestBoats = boatList.map((b,i)=>({i,b}));
+  function addPax(i,r,extraTags=[],hl=[]){const need=r.num||1;const boat=boatList[i];boat.pax.push({row:r,count:need,tags:new Set(extraTags),highlights:new Set(hl)});boat.count+=need}
+  const earliestBoats=boatList.map((b,i)=>({i,b}));
+  const findBoatByTagOrdered=(tag)=>boatList.map((b,i)=>({i,b})).filter(o=>o.b[`tag${tag}`]).sort((a,b)=>a.i-b.i);
 
-  // Rule detectors
-  const isDDI = (r) => /daydream\s*island/i.test(r.pu);
-  const isOwnWay = (r) => /(own\s*way|tbc|not\s*sure)/i.test(r.pu);
-  const isEE = (r) => /\bee\b/i.test(r.notes || '');
-  const isFly = (r) => /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes || '');
-  const isInfant = (r) => /infant/i.test(r.notes || '');
-  const multiPickupInNotes = (r) => /(pickup|p\/u|pick\s*up).*(;|,|\/|\band\b).*(pickup|p\/u|pick\s*up)/i.test(r.notes||'') || /(\bETA\b.*\bETA\b)/i.test(r.notes||'');
-  const isCharter = (r) => /charter/i.test(r.pu) || /charter/i.test(r.notes||'');
+  const isDDI=r=>/daydream\s*island/i.test(r.pu);
+  const isOwnWay=r=>/(own\s*way|tbc|not\s*sure)/i.test(r.pu);
+  const isEE=r=>/\bee\b/i.test(r.notes||'');
+  const isFly=r=>/(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||'');
+  const isInfant=r=>/infant/i.test(r.notes||'');
+  const multiPickupInNotes=r=>/(pickup|p\/u|pick\s*up).*(;|,|\/|\band\b).*(pickup|p\/u|pick\s*up)/i.test(r.notes||'')||/(\bETA\b.*\bETA\b)/i.test(r.notes||'');
+  const isCharter=r=>/charter/i.test(r.pu)||/charter/i.test(r.notes||'');
 
-  // *TW* travel-with parsing: "Last, First *TW* OtherName"
-  const twPairs = []; const twErrors = [];
-  const nameIndex = {};
-  rows.forEach((r,idx) => { nameIndex[r.clientNoTags] = (nameIndex[r.clientNoTags]||[]); nameIndex[r.clientNoTags].push(r); });
-  rows.forEach(r => {
-    if (/\*TW\*/i.test(r.client)) {
-      const after = r.client.split(/\*TW\*/i).pop().trim();
-      if (!after) return;
-      // Match by contains or equals (case-insens)
-      const candidates = Object.keys(nameIndex).filter(n => n.toLowerCase().includes(after.toLowerCase()));
-      if (candidates.length === 1 && nameIndex[candidates[0]].length === 1) {
-        twPairs.push([r, nameIndex[candidates[0]][0]]);
-      } else {
-        twErrors.push(`*TW* ambiguous for "${r.client}": matched ${candidates.length} name(s).`);
-      }
+  const twPairs=[],twErrors=[],nameIndex={};
+  rows.forEach(r=>{nameIndex[r.clientNoTags]=(nameIndex[r.clientNoTags]||[]);nameIndex[r.clientNoTags].push(r)});
+  rows.forEach(r=>{
+    if(/\*TW\*/i.test(r.client)){
+      const after=r.client.split(/\*TW\*/i).pop().trim(); if(!after)return;
+      const candidates=Object.keys(nameIndex).filter(n=>n.toLowerCase().includes(after.toLowerCase()));
+      if(candidates.length===1 && nameIndex[candidates[0]].length===1){twPairs.push([r,nameIndex[candidates[0]][0]])}
+      else{twErrors.push(`*TW* ambiguous for "${r.client}"`)}
     }
   });
 
-  // *MAP* grouping: everyone with *MAP* joins the boat of the last *MAP* assigned (south only)
-  const isSouth = (tourSelect.value === 'south');
-  const mapGroup = rows.filter(r => /\*MAP\*/i.test(r.client));
+  const isSouth=(tourSelect.value==='south');
+  const mapGroup=rows.filter(r=>/\*MAP\*/i.test(r.client));
 
-  // Pre-mark flags
-  rows.forEach(r => {
-    r.flags = [];
-    if (multiPickupInNotes(r)) r.flags.push('Multiple pickup locations noted');
-    if (isCharter(r)) r.flags.push('Suspected charter (excluded)');
+  rows.forEach(r=>{r.flags=[];if(multiPickupInNotes(r))r.flags.push('Multiple pickup locations noted');if(isCharter(r))r.flags.push('Suspected charter (excluded)')});
+  const workRows=rows.filter(r=>!isCharter(r));
+
+  function fitGroupToBoats(rowsArr,boatOrder,tagName,extraHL){const unassigned=new Set(rowsArr);for(const r of rowsArr){const need=r.num||1;for(const {i} of boatOrder){const b=boatList[i];if(b.count+need<=b.seats){addPax(i,r,[tagName],extraHL? [extraHL]:[]);unassigned.delete(r);break}}}return}
+  const unassigned=new Set(workRows);
+
+  // DDI
+  const ddiRows=workRows.filter(isDDI);
+  let ddiBoats=findBoatByTagOrdered('DDI');
+  if(ddiRows.length && ddiBoats.length===0){boatList[0].tagDDI=true;ddiBoats=findBoatByTagOrdered('DDI');pushMsg('Auto-tagged earliest active boat as DDI.', 'warn')}
+  for(const r of ddiRows){if(!unassigned.has(r))continue;const need=r.num||1;let placed=false;for(const {i} of ddiBoats){const b=boatList[i];if(b.count+need<=b.seats){addPax(i,r,['DDI']);unassigned.delete(r);placed=true;break}}}
+
+  // Fly-Raft
+  let flyBoats=findBoatByTagOrdered('Fly');
+  const flyRows=workRows.filter(isFly);
+  if(flyRows.length && flyBoats.length===0){pushMsg('No Fly-Raft boat tagged; using capacity with overflow to 2nd-last.', 'warn')}
+  for(const r of flyRows){if(!unassigned.has(r))continue;const need=r.num||1;let placed=false;const order=flyBoats.length?flyBoats:earliestBoats;for(const {i} of order){const b=boatList[i];if(b.count+need<=b.seats){addPax(i,r,['F+R']);unassigned.delete(r);placed=true;break}}if(!placed && boatList.length){const secondLastIdx=boatList.length>=2?boatList.length-2:boatList.length-1;const b=boatList[secondLastIdx];if(b.count+need<=b.seats){addPax(secondLastIdx,r,['F+R'],['Overflowed Fly-Raft → 2nd last boat']);unassigned.delete(r)}}}
+
+  // EE
+  let eeBoats=findBoatByTagOrdered('EE');const eeRows=workRows.filter(isEE);if(eeRows.length && eeBoats.length===0){pushMsg('No EE boat tagged; assigning by capacity/section.', 'warn')}
+  const eeOrder=eeBoats.length?eeBoats:earliestBoats;
+  for(const r of eeRows){if(!unassigned.has(r))continue;const need=r.num||1;const pref=r.section==='1st'?eeOrder:r.section==='2nd'?eeOrder.slice(0,Math.max(1,Math.ceil(eeOrder.length*.6))):eeOrder;let placed=false;for(const {i} of pref){const b=boatList[i];if(b.count+need<=b.seats){const hl=[];if(r.section==='1st'&&!boatList[i].tagEE)hl.push('EE on early pickup (check time)');addPax(i,r,['EE'],hl);unassigned.delete(r);placed=true;break}}if(!placed){for(const {i} of earliestBoats){const b=boatList[i];if(b.count+need<=b.seats){addPax(i,r,['EE'],['EE placed by capacity']);unassigned.delete(r);break}}}}
+
+  // MAP (south only)
+  let lastMapBoat=null;
+  if(isSouth && mapGroup.length){for(const r of mapGroup){if(!unassigned.has(r))continue;const need=r.num||1;let placed=false;const candidates=lastMapBoat!=null?[{i:lastMapBoat}]:earliestBoats;for(const {i} of candidates){const b=boatList[i];if(b.count+need<=b.seats){addPax(i,r,['MAP']);unassigned.delete(r);lastMapBoat=i;placed=true;break}}if(!placed){for(const {i} of earliestBoats){const b=boatList[i];if(b.count+need<=b.seats){addPax(i,r,['MAP'],['*MAP* fallback']);unassigned.delete(r);lastMapBoat=i;break}}}}
+
+  // TW
+  for(const [tw,tgt] of twPairs){if(!unassigned.has(tw))continue;let targetBoat=null;for(let i=0;i<boatList.length;i++){if(boatList[i].pax.some(p=>p.row===tgt)){targetBoat=i;break}}const need=tw.num||1;if(targetBoat!=null){const b=boatList[targetBoat];if(b.count+need<=b.seats){addPax(targetBoat,tw,['TW']);unassigned.delete(tw)}else{const neighbor=Math.min(targetBoat+1,boatList.length-1);const bn=boatList[neighbor];if(bn.count+need<=bn.seats){addPax(neighbor,tw,['TW'],['*TW* placed near target']);unassigned.delete(tw)}}}
+  if(twErrors.length)pushMsg(`${twErrors.length} *TW* ambiguity issue(s).`,'bad');
+
+  // Infant
+  const infantRows=workRows.filter(r=>/infant/i.test(r.notes||'') && unassigned.has(r));
+  for(const r of infantRows){const need=r.num||1;let placed=false;const pref=boatList.map((b,i)=>({i,b})).sort((a,b)=>(b.b.seats===32)-(a.b.seats===32)||(b.b.toilet?1:0)-(a.b.toilet?1:0)||a.i-b.i);for(const {i} of pref){const b=boatList[i];if(b.count+need<=b.seats){addPax(i,r,['Infant']);unassigned.delete(r);placed=true;break}}if(!placed){for(const {i} of earliestBoats){const b=boatList[i];if(b.count+need<=b.seats){addPax(i,r,['Infant'],['Infant fallback']);unassigned.delete(r);break}}}
+
+  // Own way / TBC / not sure → later boats
+  const ownRows=workRows.filter(r=>/(own\s*way|tbc|not\s*sure)/i.test(r.pu) && unassigned.has(r));
+  for(const r of ownRows){const need=r.num||1;for(let i=boatList.length-1;i>=0;i--){const b=boatList[i];if(b.count+need<=b.seats){addPax(i,r,[],['Own way → later boat bias']);unassigned.delete(r);break}}}
+
+  // Baseline fill by section
+  const orderBySection={'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4};
+  [...unassigned].sort((a,b)=>{const oa=orderBySection[a.section]??4,ob=orderBySection[b.section]??4;if(oa!==ob)return oa-ob;return (a.timeMins??1e9)-(b.timeMins??1e9)}).forEach(r=>{
+    const need=r.num||1;let placed=false;let sliceEnd=Math.max(1,Math.round(boatList.length*((orderBySection[r.section]+1)/4)));sliceEnd=Math.min(sliceEnd,boatList.length);const idxs=Array.from({length:sliceEnd},(_,i)=>i);
+    for(const i of idxs){if(boatList[i].count+need<=boatList[i].seats){addPax(i,r);placed=true;break}}
+    if(!placed){for(let i=0;i<boatList.length;i++){if(boatList[i].count+need<=boatList[i].seats){addPax(i,r,[],['Placed by capacity']);placed=true;break}}}
   });
+  const stillUnassigned=[...unassigned].filter(r=>!boatList.some(b=>b.pax.some(p=>p.row===r)));
 
-  // Exclude charters up-front
-  const workRows = rows.filter(r => !isCharter(r));
-
-  // Reserve pass 1: DDI → DDI-tagged boats (earliest first). If none tagged and needed, tag next earliest.
-  const ddiRows = workRows.filter(isDDI);
-  let ddiBoats = findBoatByTagOrdered('DDI');
-  if (ddiRows.length && ddiBoats.length === 0) {
-    // Auto-tag the second boat to DDI if overflow later; for now, tag the earliest boat
-    boatList[0].tagDDI = true;
-    ddiBoats = findBoatByTagOrdered('DDI');
-    pushMsg('Auto-tagged 1st boat as DDI (no DDI boat was set).', 'warn');
-  }
-  // Assign DDI
-  const unassigned = new Set(workRows);
-  function fitGroupToBoats(rowsArr, boatOrder, tagName) {
-    for (const r of rowsArr) {
-      if (!unassigned.has(r)) continue;
-      const need = r.num || 1;
-      let placed = false;
-      for (const {i} of boatOrder) {
-        const b = boatList[i];
-        if (b.count + need <= b.seats) {
-          addPax(i, r, [tagName]);
-          unassigned.delete(r);
-          placed = true;
-          break;
+  // Balance: fill earlier boats by pulling later-section pax back
+  for(let i=0;i<boatList.length;i++){
+    const b=boatList[i]; if(b.count>=b.seats)continue;
+    for(let j=boatList.length-1;j>i;j--){
+      const src=boatList[j];
+      for(let k=0;k<src.pax.length;k++){
+        const p=src.pax[k];const need=p.count;
+        if(!['3rd','4th','Unknown'].includes(p.row.section))continue;
+        if(b.count+need<=b.seats){
+          src.pax.splice(k,1);src.count-=need;
+          const tags=[...p.tags],hl=[...p.highlights,'Rebalanced'];addPax(i,p.row,tags,hl);k--;
+          if(b.count>=b.seats)break;
         }
       }
-    }
-  }
-  fitGroupToBoats(ddiRows, ddiBoats, 'DDI');
-
-  // Fly-Raft → fly boats; overflow to second-to-last boat
-  let flyBoats = findBoatByTagOrdered('Fly');
-  const flyRows = workRows.filter(isFly);
-  if (flyRows.length && flyBoats.length===0) {
-    // No fly-raft boat set; we’ll try to use the last boat as overflow rule requires second-to-last.
-    pushMsg('No Fly-Raft boat tagged. Will try to use later boats; overflow to second-to-last.', 'warn');
-  }
-  fitGroupToBoats(flyRows, flyBoats.length? flyBoats : earliestBoats, 'F+R');
-  // Overflow for any still-unassigned fly rows: second-to-last boat
-  const secondLastIdx = boatList.length>=2 ? boatList.length-2 : boatList.length-1;
-  for (const r of flyRows) {
-    if (unassigned.has(r)) {
-      const need = r.num || 1;
-      const b = boatList[secondLastIdx];
-      if (b.count + need <= b.seats) {
-        addPax(secondLastIdx, r, ['F+R'], ['Overflowed Fly-Raft → 2nd last boat']);
-        unassigned.delete(r);
-      }
+      if(b.count>=b.seats)break;
     }
   }
 
-  // EE → EE boat matching time (we approximate by earlier boats for early sections)
-  let eeBoats = findBoatByTagOrdered('EE');
-  const eeRows = workRows.filter(isEE);
-  if (eeRows.length && eeBoats.length===0) {
-    pushMsg('No EE boat tagged; assigning EE across earliest available boats.', 'warn');
-  }
-  const eeOrder = eeBoats.length ? eeBoats : earliestBoats;
-  for (const r of eeRows) {
-    if (!unassigned.has(r)) continue;
-    const need = r.num || 1;
-    // Bias: early sections → earlier boats
-    const pref = r.section === '1st' ? eeOrder
-               : r.section === '2nd' ? eeOrder.slice(0, Math.max(1, Math.ceil(eeOrder.length*0.6)))
-               : eeOrder;
-    let placed = false;
-    for (const {i} of pref) {
-      const b = boatList[i];
-      if (b.count + need <= b.seats) {
-        const hl = [];
-        if (r.section==='1st' && !boatList[i].tagEE) hl.push('EE on early pickup (check time)');
-        addPax(i, r, ['EE'], hl);
-        unassigned.delete(r);
-        placed = true;
-        break;
-      }
-    }
-    if (!placed) {
-      // anywhere it fits
-      for (const {i} of earliestBoats) {
-        const b = boatList[i];
-        if (b.count + need <= b.seats) {
-          addPax(i, r, ['EE'], ['EE placed by capacity']);
-          unassigned.delete(r);
-          break;
-        }
-      }
-    }
-  }
+  // Output
+  const outRows=[["Boat","DepartureOrder","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
+  resultsEl.innerHTML='';
+  let totalPax=0,capacity=0;
 
-  // *MAP* (south only): place following *MAP* on the last boat used by any *MAP*
-  let lastMapBoat = null;
-  if (isSouth && mapGroup.length) {
-    for (const r of mapGroup) {
-      if (!unassigned.has(r)) continue; // already assigned by prior rules
-      const need = r.num || 1;
-      let candidates = lastMapBoat!=null ? [{i:lastMapBoat}] : earliestBoats;
-      let placed = false;
-      for (const {i} of candidates) {
-        const b = boatList[i];
-        if (b.count + need <= b.seats) {
-          addPax(i, r, ['MAP']);
-          unassigned.delete(r);
-          lastMapBoat = i;
-          placed = true;
-          break;
-        }
-      }
-      if (!placed) {
-        // fallback anywhere
-        for (const {i} of earliestBoats) {
-          const b = boatList[i];
-          if (b.count + need <= b.seats) {
-            addPax(i, r, ['MAP'], ['*MAP* fallback']);
-            unassigned.delete(r);
-            lastMapBoat = i;
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  // *TW* pairs → same boat as target person
-  for (const [tw, tgt] of twPairs) {
-    if (!unassigned.has(tw)) continue; // already placed?
-    // If target already placed, use their boat
-    let targetBoat = null;
-    for (let i=0;i<boatList.length;i++){
-      if (boatList[i].pax.some(p => p.row===tgt)) { targetBoat = i; break; }
-    }
-    const need = tw.num || 1;
-    if (targetBoat!=null) {
-      const b = boatList[targetBoat];
-      if (b.count + need <= b.seats) {
-        addPax(targetBoat, tw, ['TW']);
-        unassigned.delete(tw);
-      } else {
-        // try neighbor boats
-        const neighbor = Math.min(targetBoat+1, boatList.length-1);
-        const bn = boatList[neighbor];
-        if (bn.count + need <= bn.seats) {
-          addPax(neighbor, tw, ['TW'], ['*TW* placed near target']);
-          unassigned.delete(tw);
-        }
-      }
-    }
-  }
-  if (twErrors.length) pushMsg(`${twErrors.length} *TW* ambiguity issue(s) — see highlights in output.`, 'bad');
-
-  // Infant → prefer big boat (32 seats), with toilet if possible
-  const infantRows = workRows.filter(r => isInfant(r) && unassigned.has(r));
-  for (const r of infantRows) {
-    const need = r.num || 1;
-    let placed = false;
-    // Prefer 32-seat with toilet
-    const pref = boatList.map((b,i)=>({i,b}))
-      .sort((a,b) => (b.b.seats===32)-(a.b.seats===32) || (b.b.toilet?1:0)-(a.b.toilet?1:0) || a.i-b.i);
-    for (const {i} of pref) {
-      const b = boatList[i];
-      if (b.count + need <= b.seats) {
-        addPax(i, r, ['Infant']);
-        unassigned.delete(r);
-        placed = true; break;
-      }
-    }
-    if (!placed) {
-      // anywhere
-      for (const {i} of earliestBoats) {
-        const b = boatList[i];
-        if (b.count + need <= b.seats) { addPax(i,r,['Infant'],['Infant fallback']); unassigned.delete(r); break; }
-      }
-    }
-  }
-
-  // Bias: “Own way / TBC / not sure” → later boats
-  const ownWayRows = workRows.filter(r => isOwnWay(r) && unassigned.has(r));
-  for (const r of ownWayRows) {
-    const need = r.num || 1;
-    for (let i=boatList.length-1;i>=0;i--) {
-      const b = boatList[i];
-      if (b.count + need <= b.seats) {
-        addPax(i, r, [], ['Own way → later boat bias']);
-        unassigned.delete(r);
-        break;
-      }
-    }
-  }
-
-  // Baseline: fill remaining by section (earlier sections → earlier boats)
-  const orderBySection = { '1st':0, '2nd':1, '3rd':2, '4th':3, 'Unknown':4 };
-  [...unassigned].sort((a,b) => {
-    const oa = orderBySection[a.section] ?? 4, ob = orderBySection[b.section] ?? 4;
-    if (oa!==ob) return oa-ob;
-    return (a.timeMins??1e9) - (b.timeMins??1e9);
-  }).forEach(r => {
-    const need = r.num || 1;
-    let placed = false;
-    // Try proportional placement: map section to slice of boats
-    let sliceEnd = Math.max(1, Math.round(boatList.length * ( (orderBySection[r.section]+1)/4 )));
-    sliceEnd = Math.min(sliceEnd, boatList.length);
-    const candidateIdxs = Array.from({length:sliceEnd}, (_,i)=>i);
-    for (const i of candidateIdxs) {
-      if (boatList[i].count + need <= boatList[i].seats) {
-        addPax(i, r); placed=true; break;
-      }
-    }
-    if (!placed) {
-      // anywhere it fits
-      for (let i=0;i<boatList.length;i++){
-        if (boatList[i].count + need <= boatList[i].seats) { addPax(i, r, [], ['Placed by capacity']); placed=true; break; }
-      }
-    }
-  });
-  // Update unassigned (those that truly couldn’t fit)
-  const stillUnassigned = [...unassigned].filter(r => !boatList.some(b => b.pax.some(p => p.row===r)));
-
-  // Balancing: if later boats have space and earlier boats have early-section pax missing, or vice-versa
-  // We’ll do a simple pass: Ensure earlier boats are filled before later ones by swapping later-section pax backwards.
-  function tryBalance() {
-    for (let i=0;i<boatList.length;i++) {
-      const b = boatList[i];
-      if (b.count >= b.seats) continue;
-      // Pull candidates from later boats with later-sections
-      for (let j=boatList.length-1;j>i;j--) {
-        const src = boatList[j];
-        for (let k=0;k<src.pax.length;k++) {
-          const p = src.pax[k];
-          const need = p.count;
-          // prefer moving 3rd/4th/Unknown sections
-          if (!['3rd','4th','Unknown'].includes(p.row.section)) continue;
-          if (b.count + need <= b.seats) {
-            // move
-            src.pax.splice(k,1); src.count -= need;
-            addPax(i, p.row, Array.from(p.tags), Array.from(p.highlights).concat(['Rebalanced']));
-            k--;
-            if (b.count >= b.seats) break;
-          }
-        }
-        if (b.count >= b.seats) break;
-      }
-    }
-  }
-  tryBalance();
-
-  // Build output table + CSV rows
-  const outRows = [];
-  const outHeader = ["Boat", "DepartureOrder", "Client", "No. Pass.", "P/U Point", "Time", "Pickup Notes", "Phone", "Tags", "Highlights", "Pickup Section"];
-  outRows.push(outHeader);
-
-  // UI render
-  resultsEl.innerHTML = '';
-  let totalPax = 0, capacity = 0;
-
-  boatList.forEach((b, idx) => {
-    capacity += b.seats;
-    totalPax += b.count;
-
-    const h = document.createElement('div');
-    h.style.margin = '10px 0 6px';
-    h.innerHTML = `<div class="justify">
-      <div><b>${idx+1}. ${b.name}</b> &nbsp; <span class="pill ${b.count<=b.seats?'ok': 'bad'}">${b.count}/${b.seats}</span></div>
+  boatList.forEach((b,idx)=>{
+    capacity+=b.seats; totalPax+=b.count;
+    const h=document.createElement('div');h.style.margin='10px 0 6px';
+    h.innerHTML=`<div class="justify">
+      <div><b>${idx+1}. ${b.name}</b> &nbsp; <span class="pill ${b.count<=b.seats?'ok':'bad'}">${b.count}/${b.seats}</span></div>
       <div class="chips">
         ${b.tagDDI?'<span class="chip">DDI</span>':''}
         ${b.tagFly?'<span class="chip">Fly-Raft</span>':''}
@@ -706,147 +320,69 @@ function allocate() {
     </div>`;
     resultsEl.appendChild(h);
 
-    const table = document.createElement('table');
-    table.innerHTML = `<thead><tr>
+    const table=document.createElement('table');
+    table.innerHTML=`<thead><tr>
       <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Highlights</th>
     </tr></thead>`;
-    const tb = document.createElement('tbody');
-
-    b.pax.forEach((p, i) => {
-      const tags = Array.from(p.tags);
-      const hl = Array.from(p.highlights);
-      const tr = document.createElement('tr');
-      // colour hints
-      const cls = hl.length ? 'warn' : (tags.length ? 'ok' : '');
-      tr.innerHTML = `
+    const tb=document.createElement('tbody');
+    b.pax.forEach((p,i)=>{
+      const tags=[...p.tags],hl=[...p.highlights];
+      const tr=document.createElement('tr');
+      tr.innerHTML=`
         <td>${i+1}</td>
         <td>${escapeHtml(p.row.client)}</td>
         <td>${p.count}</td>
         <td>${escapeHtml(p.row.pu)}</td>
-        <td>${p.row.time || ''}</td>
+        <td>${p.row.time||''}</td>
         <td>${p.row.section}</td>
-        <td>${tags.map(t => `<span class="pill tag">${t}</span>`).join(' ')}</td>
-        <td>${hl.map(t => `<span class="pill warn">${escapeHtml(t)}</span>`).join(' ')}</td>
-      `;
+        <td>${tags.map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
+        <td>${hl.map(t=>`<span class="pill warn">${escapeHtml(t)}</span>`).join(' ')}</td>`;
       tb.appendChild(tr);
-
-      // CSV row
-      outRows.push([
-        b.name, idx+1,
-        p.row.client, p.count, p.row.pu, p.row.time || '', p.row.notes || '', p.row.phone || '',
-        tags.join('; '), hl.join('; '), p.row.section
-      ]);
+      outRows.push([b.name,idx+1,p.row.client,p.count,p.row.pu,p.row.time||'',p.row.notes||'',p.row.phone||'',tags.join('; '),hl.join('; '),p.row.section]);
     });
-    table.appendChild(tb);
-    resultsEl.appendChild(table);
+    table.appendChild(tb);resultsEl.appendChild(table);
   });
 
-  // Unassigned & issues
-  const info = document.createElement('div');
-  info.className = 'statusline';
-  info.innerHTML = `
-    <div>Total allocated: <b>${totalPax}</b> / Capacity: <b>${capacity}</b> &nbsp; ${totalPax>capacity?'<span class="pill bad">Over capacity!</span>':''}</div>
-    ${stillUnassigned.length? `<div class="highlight">Unassigned pax: ${stillUnassigned.length} (not enough capacity)</div>`: ''}
-  `;
+  const info=document.createElement('div');info.className='statusline';
+  info.innerHTML=`<div>Total allocated: <b>${totalPax}</b> / Capacity: <b>${capacity}</b> ${totalPax>capacity?'<span class="pill bad">Over capacity!</span>':''}</div>
+    ${stillUnassigned.length? `<div class="pill warn" style="display:inline-block;margin-top:6px">Unassigned pax: ${stillUnassigned.length} (not enough capacity)</div>`:''}`;
   resultsEl.prepend(info);
 
-  if (stillUnassigned.length) {
-    const table = document.createElement('table');
-    table.style.marginTop = '8px';
-    table.innerHTML = `<thead><tr>
-      <th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Reason</th>
-    </tr></thead>`;
-    const tb = document.createElement('tbody');
-    stillUnassigned.forEach(r => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${escapeHtml(r.client)}</td>
-        <td>${r.num||1}</td>
-        <td>${escapeHtml(r.pu)}</td>
-        <td>${r.time||''}</td>
-        <td>${r.section}</td>
-        <td>Capacity full</td>
-      `;
+  if(stillUnassigned.length){
+    const table=document.createElement('table');table.style.marginTop='8px';
+    table.innerHTML=`<thead><tr><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Reason</th></tr></thead>`;
+    const tb=document.createElement('tbody');
+    stillUnassigned.forEach(r=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${escapeHtml(r.client)}</td><td>${r.num||1}</td><td>${escapeHtml(r.pu)}</td><td>${r.time||''}</td><td>${r.section}</td><td>Capacity full</td>`;
       tb.appendChild(tr);
-      outRows.push(["UNASSIGNED","", r.client, r.num||1, r.pu, r.time||'', r.notes||'', r.phone||'', "", "Unassigned: capacity full", r.section]);
+      outRows.push(["UNASSIGNED","",r.client,r.num||1,r.pu,r.time||'',r.notes||'',r.phone||'',"","Unassigned: capacity full",r.section]);
     });
-    table.appendChild(tb);
-    resultsEl.appendChild(table);
+    table.appendChild(tb);resultsEl.appendChild(table);
   }
 
-  // Download button
-  const csv = toCSV(outRows);
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  downloadBtn.onclick = () => {
-    const tour = tourSelect.value === 'south' ? 'south' : 'north';
-    const dt = new Date();
-    const stamp = dt.toISOString().slice(0,10);
-    const a = document.createElement('a');
-    a.href = url; a.download = `boat-split-${tour}-${stamp}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-  };
-  downloadBtn.disabled = false;
-
+  const csv=toCSV(outRows);const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);
+  downloadBtn.onclick=()=>{const tour=tourSelect.value==='south'?'south':'north';const stamp=new Date().toISOString().slice(0,10);const a=document.createElement('a');a.href=url;a.download=`boat-split-${tour}-${stamp}.csv`;document.body.appendChild(a);a.click();a.remove()};
+  downloadBtn.disabled=false;
   setStatus('Allocation complete.');
 }
 
-/* ------------------------------- Helpers --------------------------------- */
-function escapeHtml(s){ return (s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-
-/* ------------------------------ Event Wireup ----------------------------- */
-resetBtn.addEventListener('click', () => {
-  boats = cloneBoats();
-  renderBoats();
-  setStatus('Boats reset to default order and tags cleared.');
+/* ------------------------------ Events ----------------------------------- */
+resetBtn.addEventListener('click',()=>{boats=cloneBoats();renderBoats();boatsCountInput.value=boats.length;setStatus('Boats reset. All active; tags cleared.')});
+runBtn.addEventListener('click',allocate);
+boatsCountInput.addEventListener('change',()=>{let n=parseInt(boatsCountInput.value||'0',10);n=Math.max(0,Math.min(n,boats.length));applyBoatsCount(n);setStatus(`Using ${n} boat(s).`)});
+fileInput.addEventListener('change',async(e)=>{
+  clearMsgs();const f=e.target.files?.[0];if(!f)return;const text=await f.text();rawRows=parseCSV(text);if(!rawRows.length){setStatus('Empty CSV.');return}
+  header=rawRows[0].map(h=>h.trim());const data=rawRows.slice(1);
+  const idxClient=findColIndex(header,COL_ALIASES.client),idxNum=findColIndex(header,COL_ALIASES.num),idxPU=findColIndex(header,COL_ALIASES.pu),idxTime=findColIndex(header,COL_ALIASES.time),idxNotes=findColIndex(header,COL_ALIASES.notes),idxPhone=findColIndex(header,COL_ALIASES.phone);
+  if(idxClient<0||idxPU<0){setStatus('Missing required columns: need at least Client and P/U Point.');return}
+  rows=data.map(r=>{const clientRaw=norm(r[idxClient]);const num=Math.max(1,parseInt((r[idxNum]??'').toString().replace(/[^\d]/g,''),10)||1);const pu=norm(r[idxPU]);const time=norm(idxTime>=0?r[idxTime]:'');const notes=norm(idxNotes>=0?r[idxNotes]:'');const phone=norm(idxPhone>=0?r[idxPhone]:'');const timeMins=parseTimeToSortable(time);const clientNoTags=clientRaw.replace(/\*(TW|MAP)\*/ig,'').trim();return {client:clientRaw,clientNoTags,num,pu,time,timeMins,notes,phone}});
+  setStatus(`Loaded ${rows.length} rows. Choose tour, select boats in use, then Allocate.`);
+  downloadBtn.disabled=true;resultsEl.innerHTML='';
 });
 
-runBtn.addEventListener('click', allocate);
-
-fileInput.addEventListener('change', async (e) => {
-  clearMsgs();
-  const f = e.target.files?.[0];
-  if (!f) return;
-  const text = await f.text();
-  rawRows = parseCSV(text);
-  if (!rawRows.length) { setStatus('Empty CSV.'); return; }
-
-  header = rawRows[0].map(h => h.trim());
-  const data = rawRows.slice(1);
-
-  // Map header
-  const idxClient = findColIndex(header, COL_ALIASES.client);
-  const idxNum    = findColIndex(header, COL_ALIASES.num);
-  const idxPU     = findColIndex(header, COL_ALIASES.pu);
-  const idxTime   = findColIndex(header, COL_ALIASES.time);
-  const idxNotes  = findColIndex(header, COL_ALIASES.notes);
-  const idxPhone  = findColIndex(header, COL_ALIASES.phone);
-
-  if (idxClient<0 || idxPU<0) {
-    setStatus('Missing required columns: need at least Client and P/U Point.'); return;
-  }
-
-  rows = data.map(r => {
-    const clientRaw = norm(r[idxClient]);
-    const num = Math.max(1, parseInt((r[idxNum]??'').toString().replace(/[^\d]/g,''),10) || 1);
-    const pu  = norm(r[idxPU]);
-    const time = norm(idxTime>=0 ? r[idxTime] : '');
-    const notes = norm(idxNotes>=0 ? r[idxNotes] : '');
-    const phone = norm(idxPhone>=0 ? r[idxPhone] : '');
-    const timeMins = parseTimeToSortable(time);
-    const clientNoTags = clientRaw.replace(/\*(TW|MAP)\*/ig,'').trim();
-    return { client: clientRaw, clientNoTags, num, pu, time, timeMins, notes, phone };
-  });
-
-  setStatus(`Loaded ${rows.length} rows. Choose tour, configure boats, then click Allocate.`);
-  downloadBtn.disabled = true;
-  resultsEl.innerHTML = '';
-});
-
-/* ------------------------------ Boot UI ---------------------------------- */
-boats = cloneBoats();
-renderBoats();
-setStatus('No file loaded.');
+/* ------------------------------- Boot ------------------------------------ */
+boats=cloneBoats();renderBoats();boatsCountInput.value=boats.length;setStatus('No file loaded.');
 </script>
 </body>
 </html>
