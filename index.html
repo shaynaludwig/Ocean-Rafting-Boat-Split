@@ -11,15 +11,15 @@
   header{padding:24px 16px;text-align:center;background:linear-gradient(180deg,#0b1222,#0a0f1c)}
   header h1{margin:0;font-size:28px}
   header p{margin:6px 0 0;color:#9ca3af}
-  .container{max-width:1200px;margin:0 auto;padding:16px}
+  .container{max-width:1600px;margin:0 auto;padding:16px}
   .grid{display:grid;gap:16px;grid-template-columns:1fr}
-  @media(min-width:980px){.grid{grid-template-columns:360px 1fr}}
+  @media(min-width:1200px){.grid{grid-template-columns:420px 1fr}}
   .card{background:radial-gradient(900px 450px at 120% 0,rgba(167,139,250,.08),transparent 45%),var(--card);border:1px solid #1f2937;border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
   .section-title{font-weight:700;margin:0 0 12px;font-size:15px;letter-spacing:.3px;text-transform:uppercase;color:#cbd5e1}
   label{display:block;font-size:14px;color:#cbd5e1;margin:10px 0 6px}
   select,input[type="text"],input[type="number"]{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #263142;background:#0b1220;color:var(--text)}
   input[type="file"]{width:100%}
-  .row{display:flex;gap:10px}.row>*{flex:1}
+  .row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1 1 150px}
   .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid #263142;background:#0b1220;color:var(--text);cursor:pointer;text-decoration:none}
   .btn:hover{border-color:#334155}
   .btn-primary{background:#12243c;border-color:#1e3a5f}
@@ -38,6 +38,8 @@
   .tag{background:rgba(34,211,238,.12);border-color:rgba(34,211,238,.4);color:#a5f3fc}
   .boats{display:grid;gap:10px;grid-template-columns:1fr}
   @media(min-width:640px){.boats{grid-template-columns:1fr 1fr}}
+  @media(min-width:1024px){.boats{grid-template-columns:1fr 1fr 1fr}}
+  @media(min-width:1440px){.boats{grid-template-columns:1fr 1fr 1fr 1fr}}
   .boat{border:1px solid #1f2937;border-radius:12px;padding:12px;background:#0b1220}
   .boat h4{margin:0 0 8px;font-size:15px}
   .boat small{color:#9ca3af}
@@ -95,7 +97,7 @@
   <!-- RIGHT -->
   <div class="card">
     <div class="section-title">Results</div>
-    <div class="statusline" id="status">No file loaded. (v=whold2)</div>
+    <div class="statusline" id="status">No file loaded. (v=fr-tw3)</div>
     <div id="results"></div>
   </div>
 </div>
@@ -105,7 +107,7 @@
 </div>
 
 <script>
-// --- On-page error banner (helps diagnose GitHub Pages issues) ---
+// --- On-page error banner ---
 window.onerror = function (msg, src, line, col, err) {
   const pre = document.createElement('pre');
   pre.style.cssText = 'white-space:pre-wrap;background:#3b0f0f;color:#ffecec;padding:10px;border:1px solid #7f1d1d;border-radius:8px;margin:10px';
@@ -128,9 +130,9 @@ const DEFAULT_BOATS = [
   { name: "Wildthing", seats: 19, toilet: false },
 ];
 
-/* ----------------------------- DOM ----------------------------- */
-let rows = []; // normalized CSV rows
-let boats = []; // editable boats array
+/* ----------------------------- DOM & State ----------------------------- */
+let rows = [];          // normalized CSV rows
+let boats = [];         // editable boats array
 
 const fileInput = document.getElementById('file');
 const tourSelect = document.getElementById('tour');
@@ -148,6 +150,10 @@ function clearMsgs(){ messagesEl.innerHTML=''; }
 function pushMsg(text,tone=''){ const m=document.createElement('span'); m.className='chip'; if(tone==='ok')m.style.borderColor='rgba(22,163,74,.5)'; if(tone==='warn')m.style.borderColor='rgba(245,158,11,.5)'; if(tone==='bad')m.style.borderColor='rgba(239,68,68,.5)'; m.textContent=text; messagesEl.appendChild(m); }
 function escapeHtml(s){ return (s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function cloneBoats(){ return DEFAULT_BOATS.map(b=>({...b, tagDDI:false, tagFly:false, tagEE:false, tagWH:false, hold:0 })); }
+function norm(s){ return (s||'').trim(); }
+function normalizeFullName(name){ // "Lastname, Firstname" → lowercased, extra spaces removed
+  return norm(name).replace(/\s+/g,' ').toLowerCase();
+}
 function getLastName(clientNoTags){ const pre = clientNoTags.split(',')[0] || clientNoTags; return pre.trim().toLowerCase(); }
 
 /* CSV parsing */
@@ -176,7 +182,6 @@ const COL_ALIASES = {
   notes:["pickup notes","notes","comments","pu comments","p/u notes"],
   phone:["phone","mobile"]
 };
-function norm(s){ return (s||'').trim(); }
 function findColIndex(h,keys){
   const lower=h.map(x=>x.toLowerCase());
   for(const k of keys){ const i=lower.indexOf(k); if(i!==-1) return i; }
@@ -292,32 +297,51 @@ function allocate(){
   const isCharter=r=>/charter/i.test(r.pu)||/charter/i.test(r.notes||'');
   const isWeatherHoldName = r => /\bweather\s*hold\b/i.test(r.client);
 
-  // Names & TW parsing
+  // Prep rows
   rows.forEach(r=>{
     r.flags=[];
     if(multiPickupInNotes(r)) r.flags.push('Multiple pickup locations noted');
     if(isCharter(r)) r.flags.push('Suspected charter (excluded)');
     r.lastLower=getLastName(r.clientNoTags);
+    r.fullNorm = normalizeFullName(r.clientNoTags); // "lastname, firstname" normalized
   });
 
-  // Remove WEATHER HOLD pseudo-rows completely
+  // Remove WEATHER HOLD & charters
   const filtered = rows.filter(r => !isWeatherHoldName(r) && !isCharter(r));
 
-  // Group *TW* by target last name
-  const leadersByLast = new Map();
-  filtered.forEach(r=>{ const arr = leadersByLast.get(r.lastLower)||[]; arr.push(r); leadersByLast.set(r.lastLower,arr); });
-  const twGroups = new Map();
+  // ---------- *TW* groups by exact full name ----------
+  // Detect rows that reference another full name after *TW*
+  function extractTWTargetFull(r){
+    if(!/\*TW\*/i.test(r.client)) return null;
+    const after = r.client.split(/\*TW\*/i).pop().trim();
+    return after ? normalizeFullName(after) : null;
+  }
+  // Build index by normalized full name
+  const byFull = new Map(); // fullNorm -> [rows]
   filtered.forEach(r=>{
-    const hasTW = /\*TW\*/i.test(r.client);
-    if(!hasTW) return;
-    const target = r.client.split(/\*TW\*/i).pop().trim().toLowerCase();
-    if(!target) return;
-    if(!twGroups.has(target)) twGroups.set(target, new Set());
-    twGroups.get(target).add(r);
-    (leadersByLast.get(target)||[]).forEach(x=>twGroups.get(target).add(x));
+    const arr = byFull.get(r.fullNorm)||[];
+    arr.push(r); byFull.set(r.fullNorm,arr);
   });
 
-  // Unassigned tracker
+  // Map: targetFull -> Set(rows in the group: leader + all who reference leader)
+  const twGroups = new Map();
+  const twAmbiguities = [];
+
+  filtered.forEach(r=>{
+    const targetFull = extractTWTargetFull(r);
+    if(!targetFull) return;
+    const leaders = byFull.get(targetFull) || [];
+    if(leaders.length !== 1){
+      twAmbiguities.push(`*TW* for "${r.client}" did not match exactly one person (${leaders.length} found).`);
+      return;
+    }
+    const leader = leaders[0];
+    if(!twGroups.has(targetFull)) twGroups.set(targetFull, new Set());
+    // Add all referrers to this leader + the leader
+    twGroups.get(targetFull).add(r);
+    twGroups.get(targetFull).add(leader);
+  });
+
   const unassigned=new Set(filtered);
 
   // DDI first
@@ -331,7 +355,7 @@ function allocate(){
     for(const {i} of ddiBoats){ const b=boatList[i]; if(b.count+need<=effSeats(b)){ addPax(i,r,['DDI']); unassigned.delete(r); placed=true; break; } }
   }
 
-  // Fly-Raft (ignore if "early boat")
+  // Fly-Raft (from count or notes), unless "early boat"
   const flyRows = filtered.filter(r => (r.flyFromCount || isFlyNotes(r)) && !isEarlyBoat(r));
   let flyBoats=findBoatByTagOrdered('Fly');
   if(flyRows.length && flyBoats.length===0) pushMsg('No Fly-Raft boat tagged; using capacity with overflow to 2nd-last.','warn');
@@ -399,7 +423,7 @@ function allocate(){
       if(!placed){ for(let i=0;i<boatList.length;i++){ const b=boatList[i]; if(b.count+need<=effSeats(b)){ addPax(i,r,[],['Placed by capacity']); placed=true; break; } } }
     });
 
-  // Balance: pull late-section pax backward to fill earlier boats (respect holds)
+  // Balance (respect holds)
   for(let i=0;i<boatList.length;i++){
     const b=boatList[i]; if(b.count>=effSeats(b)) continue;
     for(let j=boatList.length-1;j>i;j--){
@@ -417,8 +441,10 @@ function allocate(){
     }
   }
 
-  /* ---------------- TW CONSOLIDATION ---------------- */
-  for(const [targetLastLower, setRows] of twGroups.entries()){
+  /* ---------------- TW CONSOLIDATION (full-name based) ---------------- */
+  if(twAmbiguities.length) pushMsg(`${twAmbiguities.length} *TW* issue(s).`, 'bad');
+
+  for(const [targetFull, setRows] of twGroups.entries()){
     const members = Array.from(setRows);
     let totalNeed = 0; let maxAssigned = -1;
     members.forEach(r=>{
@@ -438,7 +464,7 @@ function allocate(){
     if(!placed){ for(let i=anchor+1;i<boatList.length;i++){ if(tryPlaceAt(i)){ placed=true; break; } } }
     if(!placed){ for(let i=anchor-1;i>=0;i--){ if(tryPlaceAt(i)){ placed=true; break; } } }
     if(!placed){
-      pushMsg(`TW group for "${targetLastLower}" split due to capacity.`, 'bad');
+      pushMsg(`TW group for "${targetFull}" split due to capacity.`, 'bad');
       for(let r of members){
         let fit=false;
         for(let i=boatList.length-1;i>=0;i--){
@@ -538,8 +564,10 @@ function wireEvents(){
 
     rows = data.map(r=>{
       const clientRaw=norm(r[idxClient]);
+
+      // F+R parsing from No. Pass. column (robust: "2(F+R)", "3 ( F + R )", etc.)
       const numRaw = (r[idxNum]??'').toString();
-      const frFromCount = /\(\s*F\+\s*R\s*\)/i.test(numRaw);  // detects (F+R) in No. Pass.
+      const frFromCount = /\(\s*F\s*\+\s*R\s*\)/i.test(numRaw);
       const numMatch = numRaw.match(/\d+/);
       const num = Math.max(1, numMatch ? parseInt(numMatch[0],10) : 1);
 
@@ -564,7 +592,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wireEvents();
-    setStatus('No file loaded. (v=whold2)');
+    setStatus('No file loaded. (v=fr-tw3)');
   }catch(e){
     console.error(e); window.onerror(e.message,'',0,0,e);
   }
