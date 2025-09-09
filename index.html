@@ -113,7 +113,7 @@
 
     <div class="panel">
       <div class="section-title">Status</div>
-      <div id="status" class="muted">Ready. (v=fix-contrast3)</div>
+      <div id="status" class="muted">Booting…</div>
     </div>
   </aside>
 
@@ -217,62 +217,86 @@ function pushMsg(text,tone=''){
 
 /* ===== Boats UI ===== */
 function cloneBoats(){ return DEFAULT_BOATS.map(b=>({...b, tagDDI:false, tagFly:false, tagEE:false, tagWH:false, hold:0 })); }
+
+/* DEFENSIVE renderBoats (never ends up blank silently) */
 function renderBoats(){
-  const wrap = document.getElementById('boats'); wrap.innerHTML='';
-  if(!boats.length){
-    const d=document.createElement('div'); d.className='muted'; d.textContent='No boats in use. Click "Reset boats" to restore defaults.'; wrap.appendChild(d);
-    return;
+  const wrap = document.getElementById('boats');
+  if (!wrap) { setStatus('Boats container missing.'); return; }
+
+  try {
+    wrap.innerHTML='';
+    if(!boats || !Array.isArray(boats)){
+      setStatus('Boats array not initialised.');
+      boats = cloneBoats();
+    }
+    if(!boats.length){
+      const d=document.createElement('div');
+      d.className='muted';
+      d.textContent='No boats in use. Click "Reset boats" to restore defaults.';
+      wrap.appendChild(d);
+      return;
+    }
+
+    boats.forEach((b,idx)=>{
+      const box=document.createElement('div'); box.className='boat';
+      box.innerHTML=`
+        <div class="just">
+          <div>
+            <h4>${idx+1}. ${b.name} ${b.toilet?'🚻':''}</h4>
+            <div class="muted" style="font-size:12px">${b.seats} seats${b.toilet?', toilet':''}</div>
+          </div>
+          <div class="controls-inline">
+            <button class="btn" data-act="up" data-idx="${idx}" title="Earlier">▲</button>
+            <button class="btn" data-act="down" data-idx="${idx}" title="Later">▼</button>
+            <button class="btn btn-danger" data-act="remove" data-idx="${idx}" title="Remove boat">×</button>
+          </div>
+        </div>
+        <div class="row row-tight" style="margin-top:8px; align-items:center">
+          <div class="tagline" style="display:flex; gap:10px; flex-wrap:wrap">
+            <label><input type="checkbox" data-act="ddi" data-idx="${idx}" ${b.tagDDI?'checked':''}/> DDI</label>
+            <label><input type="checkbox" data-act="fly" data-idx="${idx}" ${b.tagFly?'checked':''}/> Fly-Raft</label>
+            <label><input type="checkbox" data-act="ee"  data-idx="${idx}" ${b.tagEE?'checked':''}/> EE</label>
+            <label><input type="checkbox" data-act="wh"  data-idx="${idx}" ${b.tagWH?'checked':''}/> WH</label>
+          </div>
+          <div style="flex:1"></div>
+          <label style="margin:0; flex:0 0 150px">Hold seats
+            <input type="number" data-act="hold" data-idx="${idx}" min="0" max="${b.seats}" value="${b.hold||0}" />
+          </label>
+        </div>
+      `;
+      wrap.appendChild(box);
+    });
+
+    // wire row controls
+    wrap.querySelectorAll('button').forEach(btn=>{
+      btn.onclick=()=>{
+        const idx=+btn.dataset.idx, act=btn.dataset.act;
+        if(act==='up'&&idx>0){ [boats[idx-1],boats[idx]]=[boats[idx],boats[idx-1]]; renderBoats(); }
+        if(act==='down'&&idx<boats.length-1){ [boats[idx+1],boats[idx]]=[boats[idx],boats[idx+1]]; renderBoats(); }
+        if(act==='remove'){ boats.splice(idx,1); renderBoats(); setStatus('Boat removed.'); }
+      };
+    });
+    wrap.querySelectorAll('input').forEach(inp=>{
+      inp.onchange=()=>{
+        const idx=+inp.dataset.idx, act=inp.dataset.act;
+        if(act==='ddi'){ boats[idx].tagDDI = inp.checked; if(inp.checked && boats[idx].tagFly){ boats[idx].tagFly=false; } }
+        if(act==='fly'){ boats[idx].tagFly = inp.checked; if(inp.checked && boats[idx].tagDDI){ boats[idx].tagDDI=false; } }
+        if(act==='ee'){ boats[idx].tagEE = inp.checked; }
+        if(act==='wh'){ boats[idx].tagWH = inp.checked; }
+        if(act==='hold'){
+          let v=parseInt(inp.value||'0',10); v=isNaN(v)?0:v;
+          v=Math.max(0,Math.min(v,boats[idx].seats)); boats[idx].hold=v; inp.value=String(v);
+        }
+        renderBoats();
+      };
+    });
+
+  } catch (e){
+    const errBox=document.createElement('div');
+    errBox.className='err';
+    errBox.textContent='Boats render error: '+ (e && e.stack ? e.stack : String(e));
+    wrap.parentElement.prepend(errBox);
   }
-  boats.forEach((b,idx)=>{
-    const box=document.createElement('div'); box.className='boat';
-    box.innerHTML=`
-      <div class="just">
-        <div>
-          <h4>${idx+1}. ${b.name} ${b.toilet?'🚻':''}</h4>
-          <div class="muted" style="font-size:12px">${b.seats} seats${b.toilet?', toilet':''}</div>
-        </div>
-        <div class="controls-inline">
-          <button class="btn" data-act="up" data-idx="${idx}" title="Earlier">▲</button>
-          <button class="btn" data-act="down" data-idx="${idx}" title="Later">▼</button>
-          <button class="btn btn-danger" data-act="remove" data-idx="${idx}" title="Remove boat">×</button>
-        </div>
-      </div>
-      <div class="row row-tight" style="margin-top:8px; align-items:center">
-        <div class="tagline" style="display:flex; gap:10px; flex-wrap:wrap">
-          <label><input type="checkbox" data-act="ddi" data-idx="${idx}" ${b.tagDDI?'checked':''}/> DDI</label>
-          <label><input type="checkbox" data-act="fly" data-idx="${idx}" ${b.tagFly?'checked':''}/> Fly-Raft</label>
-          <label><input type="checkbox" data-act="ee"  data-idx="${idx}" ${b.tagEE?'checked':''}/> EE</label>
-          <label><input type="checkbox" data-act="wh"  data-idx="${idx}" ${b.tagWH?'checked':''}/> WH</label>
-        </div>
-        <div style="flex:1"></div>
-        <label style="margin:0; flex:0 0 150px">Hold seats
-          <input type="number" data-act="hold" data-idx="${idx}" min="0" max="${b.seats}" value="${b.hold||0}" />
-        </label>
-      </div>
-    `;
-    wrap.appendChild(box);
-  });
-  wrap.querySelectorAll('button').forEach(btn=>{
-    btn.onclick=()=>{
-      const idx=+btn.dataset.idx, act=btn.dataset.act;
-      if(act==='up'&&idx>0){ [boats[idx-1],boats[idx]]=[boats[idx],boats[idx-1]]; renderBoats(); }
-      if(act==='down'&&idx<boats.length-1){ [boats[idx+1],boats[idx]]=[boats[idx],boats[idx+1]]; renderBoats(); }
-      if(act==='remove'){ boats.splice(idx,1); renderBoats(); setStatus('Boat removed.'); }
-    };
-  });
-  wrap.querySelectorAll('input').forEach(inp=>{
-    inp.onchange=()=>{
-      const idx=+inp.dataset.idx, act=inp.dataset.act;
-      if(act==='ddi'){ boats[idx].tagDDI = inp.checked; if(inp.checked && boats[idx].tagFly){ boats[idx].tagFly=false; } }
-      if(act==='fly'){ boats[idx].tagFly = inp.checked; if(inp.checked && boats[idx].tagDDI){ boats[idx].tagDDI=false; } }
-      if(act==='ee'){ boats[idx].tagEE = inp.checked; }
-      if(act==='wh'){ boats[idx].tagWH = inp.checked; }
-      if(act==='hold'){
-        let v=parseInt(inp.value||'0',10); v=isNaN(v)?0:v; v=Math.max(0,Math.min(v,boats[idx].seats)); boats[idx].hold=v; inp.value=String(v);
-      }
-      renderBoats();
-    };
-  });
 }
 
 /* ===== Allocation (DDI early + Fly last + safety) ===== */
@@ -556,6 +580,8 @@ function wire(){
     rows = data.map(r=>{
       const clientRaw = norm(r[idxClient]);
       const numRaw = (r[idxNum]??'').toString();
+
+      // Detect F+R anywhere (No. Pass., Client, Notes)
       const FRfromCount  = /\(\s*F\s*\+\s*R\s*\)/i.test(numRaw);
       const FRfromClient = /\(\s*F\s*\+\s*R\s*\)/i.test(clientRaw);
       const FRfromNotes  = /\(\s*F\s*\+\s*R\s*\)/i.test(norm(idxNotes>=0?r[idxNotes]:'')); 
@@ -579,12 +605,51 @@ function wire(){
   });
 }
 
-/* ===== Boot (guaranteed boats on load) ===== */
+/* Needed again here (scoped above earlier) */
+function findColIndex(h,keys){
+  const lower=h.map(x=>x.toLowerCase());
+  for(const k of keys){ const i=lower.indexOf(k); if(i!==-1) return i; }
+  for(let i=0;i<lower.length;i++){ if(keys.some(k=>lower[i].includes(k))) return i; }
+  return -1;
+}
+
+/* ===== Boot (self-healing, guaranteed boats) ===== */
 function init(){
-  boats = cloneBoats();
-  renderBoats();                 // ← ensures boats visible immediately
+  // Always initialise the boats array
+  if (!boats || !Array.isArray(boats)) boats = [];
+  if (boats.length === 0) boats = cloneBoats();
+
+  // First render
+  renderBoats();
+
+  // Wire listeners
   wire();
-  setStatus('Ready. (v=fix-contrast3)');
+
+  // Status & version
+  setStatus('Ready. (v=guard-final1)');
+
+  // Self-heal pass: if nothing rendered, repopulate and render again.
+  setTimeout(()=>{
+    const wrap = document.getElementById('boats');
+    if (wrap && wrap.children.length === 0) {
+      boats = cloneBoats();
+      renderBoats();
+      const msg = document.createElement('div');
+      msg.className = 'chip';
+      msg.textContent = 'Recovered boats view';
+      document.getElementById('messages').appendChild(msg);
+    }
+  }, 60);
+
+  // Extra safety: re-render once more after full page load
+  window.addEventListener('load', ()=>{
+    const wrap = document.getElementById('boats');
+    if (wrap && wrap.children.length === 0) {
+      boats = cloneBoats();
+      renderBoats();
+      setStatus('Recovered boats on load.');
+    }
+  });
 }
 if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', init); } else { init(); }
 </script>
