@@ -567,87 +567,161 @@ function allocate(){
     }
   });
 
-  // ====== 9) *TW* precedence (anchor Unknown/TBC to partner with known section) ======
-  function sectionRank(s){ return {'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 0; }
-  function referenceMember(arr){
-    const known = arr.filter(r=>r.section && r.section!=='Unknown');
-    if(!known.length) return null;
-    return known.sort((a,b)=>{
-      const ra=sectionRank(a.section), rb=sectionRank(b.section);
-      if(rb!==ra) return rb-ra;
-      return (b.timeMins??-1) - (a.timeMins??-1);
-    })[0];
+// ====== 9) *TW* precedence (anchor Unknown/TBC to partner with known section + SWAP if needed) ======
+function sectionRank(s){ return {'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 0; }
+function referenceMember(arr){
+  const known = arr.filter(r=>r.section && r.section!=='Unknown');
+  if(!known.length) return null;
+  return known.sort((a,b)=>{
+    const ra=sectionRank(a.section), rb=sectionRank(b.section);
+    if(rb!==ra) return rb-ra;
+    return (b.timeMins??-1) - (a.timeMins??-1);
+  })[0];
+}
+function isFRRow(r){ return /\(\s*F\s*\+\s*R\s*\)/i.test(r.clientRaw) || r.flyFromCount || /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||''); }
+function isDDIRow(r){ return /daydream\s*island/i.test(r.pu); }
+
+/**
+ * Try to make room on target boat by moving later-section pax to later boats.
+ * - targetIdx: index of target boat
+ * - need: seats needed to free
+ * - refSec: section of the TW anchor ('1st'...'4th' or 'Unknown')
+ * - requireFly: boolean (group has F+R)
+ * Returns true if room made, else false.
+ */
+function tryMakeRoomWithSwap(targetIdx, need, refSec, requireFly){
+  const target = B[targetIdx];
+  const refRank = sectionRank(refSec);
+  if(refRank <= 0) return false; // no meaningful anchor
+
+  // Build list of later boats (in schedule order) that are compatible for donors
+  const laterBoatIdx = edges.filter(i => i > targetIdx);
+  // Filter out DDI as landing unless donor is DDI (we avoid moving DDI at all)
+  // Also, if donor is FR, landing must be Fly.
+  // For non-FR donors, any non-DDI landing is fine.
+
+  // Collect candidate donors from the target boat: later sections only and moveable
+  // We'll scan from the end so we prefer moving entries that were placed later in the pass.
+  let freed = 0;
+  for(let k = target.pax.length - 1; k >= 0 && freed < need; k--){
+    const entry = target.pax[k];
+    const row = entry.row;
+    const cnt = entry.count;
+    const donorRank = sectionRank(row.section);
+    const donorIsDDI = entry.tags.has('DDI') || isDDIRow(row);
+    const donorIsFR  = entry.tags.has('F+R') || isFRRow(row);
+    const donorIsTW  = Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped')); // don't split groups we just grouped
+
+    // Only consider later sections than the reference (3rd/4th/Unknown vs 1st/2nd)
+    if(donorRank >= refRank) continue;
+    // Never move DDI; never move the newly grouped TW blocks while making room
+    if(donorIsDDI || donorIsTW) continue;
+    // If target is Fly and donor is FR, moving is ok; if donor is FR but landing isn't Fly, skip later.
+    // Find a landing boat
+    let landed = false;
+    for(const j of laterBoatIdx){
+      const land = B[j];
+      if(land === target) continue;
+      // Landing constraints
+      if(land.tagDDI) continue;            // don't land on DDI
+      if(donorIsFR && !land.tagFly) continue; // FR must land on Fly
+      // Capacity check
+      if(land.count + cnt <= eff(land)){
+        // Move donor entry
+        target.pax.splice(k,1);
+        target.count -= cnt;
+        // Preserve tags/highlights
+        addPax(j, row, [...entry.tags], [...entry.highlights, 'SWAP (freed earlier boat)']);
+        freed += cnt;
+        landed = true;
+        break;
+      }
+    }
+    // If couldn't land donor, keep scanning other donors
+  }
+  return freed >= need;
+}
+
+for(const [anchor, groupRaw] of twGroups){
+  const group = Array.from(new Set(groupRaw));
+
+  // DDI conflict → popup, skip merging so you can adjust PU
+  if(group.some(isDDIRow)){
+    popups.push(`*TW* group involving "${anchor}" includes a DDI passenger. Please consider changing PU times to keep them together.`);
+    continue;
   }
 
-  for(const [anchor, groupRaw] of twGroups){
-    const group = Array.from(new Set(groupRaw));
+  const need = group.reduce((s,r)=>s+(r.num||1),0);
+  const anyFR = group.some(isFRRow);
+  const ref = referenceMember(group); // known-section anchor if any
 
-    // DDI conflict → popup, skip merging
-    if(group.some(isDDI)){
-      popups.push(`*TW* group involving "${anchor}" includes a DDI passenger. Please consider changing PU times to keep them together.`);
+  // Build candidate boats
+  let candidates = [];
+  if(anyFR){
+    const flyIdx = tagOrder('Fly').map(x=>x.i);
+    if(!flyIdx.length){
+      popups.push(`*TW* group with "${anchor}" requires Fly-Raft but no Fly boat is tagged.`);
       continue;
     }
-
-    const need = group.reduce((s,r)=>s+(r.num||1),0);
-    const anyFR = group.some(hasFR);
-    const ref = referenceMember(group); // known-section anchor if any
-
-    // Build candidate boats
-    let candidates = [];
-    if(anyFR){
-      const flyIdx = tagOrder('Fly').map(x=>x.i);
-      if(!flyIdx.length){
-        popups.push(`*TW* group with "${anchor}" requires Fly-Raft but no Fly boat is tagged.`);
-        continue;
-      }
-      if(ref && (ref.section==='1st' || ref.section==='2nd')){
-        candidates = flyIdx.slice(); // earlier Fly first
-      }else{
-        candidates = flyIdx.slice().reverse(); // latest Fly first
-      }
+    if(ref && (ref.section==='1st' || ref.section==='2nd')){
+      candidates = flyIdx.slice(); // earlier Fly first
     }else{
-      const notDDI = edges.filter(i=>!B[i].tagDDI);
-      if(ref && (ref.section==='1st' || ref.section==='2nd')){
-        candidates = notDDI.filter(i=>i !== (edges[1] ?? (B.length-1))); // avoid very last
-      }else if(ref && (ref.section==='3rd' || ref.section==='4th')){
-        candidates = notDDI.slice().reverse(); // bias later side
-      }else{
-        candidates = notDDI.slice(1); // fallback
-      }
+      candidates = flyIdx.slice().reverse(); // latest Fly first
     }
-
-    // Capacity check, move whole group
-    let placedIdx = null;
-    for(const i of candidates){
-      const b = B[i];
-      const capLeft = eff(b) - b.count;
-      if(capLeft >= need){ placedIdx = i; break; }
+  }else{
+    const notDDI = edges.filter(i=>!B[i].tagDDI);
+    if(ref && (ref.section==='1st' || ref.section==='2nd')){
+      // early: avoid very last to prevent drift
+      const last = edges[1] ?? (B.length-1);
+      candidates = notDDI.filter(i=>i !== last);
+    }else if(ref && (ref.section==='3rd' || ref.section==='4th')){
+      candidates = notDDI.slice().reverse(); // bias later
+    }else{
+      candidates = notDDI.slice(1); // fallback
     }
-    if(placedIdx==null){
-      const kind = anyFR ? ' (Fly-Raft)' : '';
-      popups.push(`*TW* group with "${anchor}" could not fit on the target${kind} boat(s). Consider tagging another boat, reducing holds, or adjusting numbers.`);
-      continue;
-    }
-
-    // Remove existing entries for these rows
-    for(let bi=0; bi<B.length; bi++){
-      const p=B[bi].pax;
-      for(let k=p.length-1; k>=0; k--){
-        if(group.includes(p[k].row)){
-          const rem = B[bi].pax.splice(k,1)[0];
-          B[bi].count -= rem.count;
-        }
-      }
-    }
-
-    // Re-add as a unit; mark TW group on the destination boat
-    for(const r of group){
-      const tags=[]; if(hasFR(r)) tags.push('F+R'); if(isEE(r)) tags.push('EE'); if(isDDI(r)) tags.push('DDI');
-      addPax(placedIdx, r, tags, ['*TW* grouped (anchored to partner’s section)']);
-      unassigned.delete(r);
-    }
-    B[placedIdx].twGroups.add(anchor);
   }
+
+  // Try to place whole group; if no room, try swaps to make room.
+  let placedIdx = null;
+  for(const i of candidates){
+    const b = B[i];
+    const capLeft = eff(b) - b.count;
+    if(capLeft >= need){
+      placedIdx = i; break;
+    }else{
+      // attempt swap if this is an earlier-side target (typical 2nd section case)
+      const refSec = ref ? ref.section : 'Unknown';
+      const ok = tryMakeRoomWithSwap(i, need - capLeft, refSec, anyFR);
+      if(ok){
+        placedIdx = i; break;
+      }
+    }
+  }
+  if(placedIdx==null){
+    const kind = anyFR ? ' (Fly-Raft)' : '';
+    popups.push(`*TW* group with "${anchor}" could not fit on the target${kind} boat(s) even after swaps. Consider tagging another boat, reducing holds, or adjusting numbers.`);
+    continue;
+  }
+
+  // Remove existing entries for these rows (from wherever they landed earlier)
+  for(let bi=0; bi<B.length; bi++){
+    const p=B[bi].pax;
+    for(let k=p.length-1; k>=0; k--){
+      if(group.includes(p[k].row)){
+        const rem = B[bi].pax.splice(k,1)[0];
+        B[bi].count -= rem.count;
+      }
+    }
+  }
+
+  // Re-add as a unit; mark TW group on the destination boat
+  for(const r of group){
+    const tags=[]; if(isFRRow(r)) tags.push('F+R'); if(isEE(r)) tags.push('EE'); if(isDDIRow(r)) tags.push('DDI');
+    addPax(placedIdx, r, tags, ['*TW* grouped (anchored to partner’s section)']);
+  }
+  B[placedIdx].twGroups.add(anchor);
+}
+
 
   // ====== 10) Render output (with SEAT HOLD rows + TW group chip) ======
   const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
