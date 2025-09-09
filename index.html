@@ -7,34 +7,16 @@
 <style>
   :root{
     /* High-contrast palette */
-    --bg:#090b10;        /* page background (very dark) */
-    --panel:#0d1117;     /* card/panel */
-    --card:#0f1522;      /* inner card */
-    --line:#2b3a55;      /* borders */
-    --text:#f2f6ff;      /* primary text (very light) */
-    --muted:#c7d2e5;     /* secondary text */
-    --chip:#0f2240;      /* chip bg */
-    --chip-brd:#3a68b1;  /* chip border */
-    --btn:#132a56;       /* button bg */
-    --btn-brd:#3d6bce;   /* button border */
-    --btn-hover:#17346c; /* button hover */
-    --ok:#16a34a; --warn:#f59e0b; --bad:#ef4444;
-    --shadow: 0 8px 24px rgba(0,0,0,.35);
+    --bg:#090b10; --panel:#0d1117; --card:#0f1522; --line:#2b3a55;
+    --text:#f2f6ff; --muted:#c7d2e5; --chip:#0f2240; --chip-brd:#3a68b1;
+    --btn:#132a56; --btn-brd:#3d6bce; --btn-hover:#17346c;
+    --ok:#16a34a; --warn:#f59e0b; --bad:#ef4444; --shadow:0 8px 24px rgba(0,0,0,.35);
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{
-    margin:0;background:var(--bg);color:var(--text);
-    font:15px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
-    -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
-  }
-
-  header{
-    position:sticky;top:0;z-index:10;
-    padding:16px 20px;border-bottom:1px solid var(--line);
-    background:linear-gradient(180deg,#0b0f18 0,#0a0e15 100%);
-  }
-  header h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.2px}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  header{position:sticky;top:0;z-index:10;padding:16px 20px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0b0f18 0,#0a0e15 100%)}
+  header h1{margin:0;font-size:22px;font-weight:800}
   header p{margin:4px 0 0;color:var(--muted);font-size:13px}
 
   .shell{max-width:1720px;margin:0 auto;display:grid;gap:16px;grid-template-columns:400px minmax(0,1fr);padding:16px}
@@ -43,15 +25,12 @@
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow)}
   .section-title{font-weight:800;text-transform:uppercase;letter-spacing:.35px;color:#d9e6ff;font-size:12px;margin:0 0 10px}
   label{display:block;margin:10px 0 6px;color:#d9e6ff}
-  input[type="file"],select,input[type="number"],input[type="text"]{
-    width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#0a1323;color:var(--text);outline:none
-  }
+  input[type="file"],select,input[type="number"],input[type="text"]{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#0a1323;color:var(--text);outline:none}
   input[type="file"]{padding:8px 10px}
   .muted{color:var(--muted)}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
   .chips{display:flex;flex-wrap:wrap;gap:6px}
   .chip{background:var(--chip);border:1px solid var(--chip-brd);color:#e7efff;padding:5px 8px;border-radius:999px;font-size:12px;white-space:nowrap}
-
   .toolbar{display:flex;gap:8px;flex-wrap:wrap}
   .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;border:1px solid var(--btn-brd);background:var(--btn);color:#fff;cursor:pointer;text-decoration:none}
   .btn:hover{background:var(--btn-hover)}
@@ -75,23 +54,20 @@
   .results-panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:0;overflow:hidden;box-shadow:var(--shadow)}
   .results-head{padding:12px 14px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#10182a 0,#0d1422 100%)}
   .status{color:#e7efff;font-size:13px}
-
   .results-body{max-height:calc(80vh - 110px);overflow:auto;padding:14px}
   .boat-header{display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px}
-
   .pill{display:inline-block;padding:4px 9px;border-radius:999px;border:1px solid var(--line);font-size:12px}
   .ok{background:rgba(22,163,74,.18);border-color:rgba(22,163,74,.55)}
   .warn{background:rgba(245,158,11,.18);border-color:rgba(245,158,11,.55)}
   .bad{background:rgba(239,68,68,.2);border-color:rgba(239,68,68,.6)}
   .tag{background:rgba(34,211,238,.18);border-color:rgba(34,211,238,.55);color:#c9f0ff}
-
   table{width:100%;border-collapse:separate;border-spacing:0}
   thead th{position:sticky;top:0;z-index:1;background:#131b2c;color:#ffffff;text-align:left;font-weight:800;border-bottom:1px solid var(--line);padding:10px 8px}
   tbody td{border-bottom:1px solid var(--line);padding:10px 8px}
   tbody tr:nth-child(2n){background:rgba(255,255,255,.03)}
   tbody tr:hover{background:rgba(255,255,255,.06)}
 
-  /* Red error banner if any JS error occurs */
+  /* Big red error banner if JS crashes */
   .err{white-space:pre-wrap;background:#3b0f0f;color:#ffe9e9;border:1px solid #a33a3a;border-radius:10px;padding:10px;margin:12px 0}
 </style>
 </head>
@@ -137,7 +113,7 @@
 
     <div class="panel">
       <div class="section-title">Status</div>
-      <div id="status" class="muted">No file loaded. (v=contrast1)</div>
+      <div id="status" class="muted">Ready. (v=fix-contrast3)</div>
     </div>
   </aside>
 
@@ -155,18 +131,25 @@
 </div>
 
 <script>
-/* ====== Error banner so you can see issues on GitHub Pages instantly ====== */
+/* ===== Error banner so GitHub Pages shows issues instead of silently failing ===== */
 window.onerror = (msg, src, line, col, err) => {
   const host = document.querySelector('#results');
   const pre = document.createElement('div');
   pre.className = 'err';
-  pre.textContent = `Script error:\\n${msg}\\n${src?('at '+src+':'+line+':'+col):''}\\n` + (err&&err.stack?err.stack:'');
+  pre.textContent = `Script error:\n${msg}\n${src?('at '+src+':'+line+':'+col):''}\n` + (err&&err.stack?err.stack:'');
   host?.prepend(pre);
 };
 
-/* ====== High-contrast UI + reliable boot ====== */
+/* ===== Utilities ===== */
+const el = id => document.getElementById(id);
+const setStatus = s => el('status').textContent = s;
 
-/* Defaults */
+function norm(s){ return (s??'').toString().trim(); }
+function escapeHtml(s){ return (s??'').replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m])); }
+function edgeOrder(n){ const res=[]; for(let a=0,b=n-1;a<=b;a++,b--){ res.push(a); if(b>a) res.push(b);} return res; }
+const toCSV = rows => rows.map(r=>r.map(v=>{ if(v==null)return''; v=String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\n');
+
+/* ===== Default boats ===== */
 const DEFAULT_BOATS = [
   { name: "Joyride",        seats: 32, toilet: true },
   { name: "Thunderstruck",  seats: 32, toilet: true },
@@ -177,20 +160,10 @@ const DEFAULT_BOATS = [
   { name: "Jammin",         seats: 22, toilet: true },
   { name: "Wildthing",      seats: 19, toilet: false },
 ];
-
-let rows = [];
 let boats = [];
+let rows = [];
 
-const el = id => document.getElementById(id);
-const setStatus = s => el('status').textContent = s;
-
-/* Utils */
-function norm(s){ return (s??'').toString().trim(); }
-function escapeHtml(s){ return (s??'').replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m])); }
-function edgeOrder(n){ const res=[]; for(let a=0,b=n-1;a<=b;a++,b--){ res.push(a); if(b>a) res.push(b);} return res; }
-const toCSV = rows => rows.map(r=>r.map(v=>{ if(v==null)return''; v=String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\n');
-
-/* CSV parsing */
+/* ===== CSV parsing ===== */
 function parseCSV(text){
   const rows=[]; let cur='',row=[],inQ=false,i=0;
   while(i<text.length){ const ch=text[i];
@@ -233,7 +206,7 @@ function quartileSection(mins, sortedDistinct){
   if(mins<=q1) return '1st'; if(mins<=q2) return '2nd'; if(mins<=q3) return '3rd'; return '4th';
 }
 
-/* Messages */
+/* ===== Messages ===== */
 const messagesEl = document.getElementById('messages');
 function clearMsgs(){ messagesEl.innerHTML=''; }
 function pushMsg(text,tone=''){
@@ -242,12 +215,12 @@ function pushMsg(text,tone=''){
   m.style.borderColor=col; m.textContent=text; messagesEl.appendChild(m);
 }
 
-/* Boats UI */
+/* ===== Boats UI ===== */
 function cloneBoats(){ return DEFAULT_BOATS.map(b=>({...b, tagDDI:false, tagFly:false, tagEE:false, tagWH:false, hold:0 })); }
 function renderBoats(){
   const wrap = document.getElementById('boats'); wrap.innerHTML='';
   if(!boats.length){
-    const d=document.createElement('div'); d.className='muted'; d.textContent='No boats in use. Click "Reset boats" to restore defaults.'; wrap.appendChild(d); 
+    const d=document.createElement('div'); d.className='muted'; d.textContent='No boats in use. Click "Reset boats" to restore defaults.'; wrap.appendChild(d);
     return;
   }
   boats.forEach((b,idx)=>{
@@ -302,25 +275,12 @@ function renderBoats(){
   });
 }
 
-/* ====== Allocation logic (unchanged from your latest “DDI early / FR latest” rules) ====== */
-/* Kept but omitted here for brevity—if you need me to paste it again, say “paste allocator” and I’ll drop the full JS.
-   The missing part won’t affect “boats not showing” — that’s purely the UI boot/render. */
-
-/* ---- Minimal stub so page loads; click Allocate will set status when allocator is added ---- */
-function allocate(){function allocate(){
-  // ----- setup & guards -----
-  const messagesEl = document.getElementById('messages');
-  function clearMsgs(){ messagesEl.innerHTML=''; }
-  function pushMsg(text,tone=''){
-    const m=document.createElement('span'); m.className='chip';
-    const col = tone==='ok'?'#38d46a':tone==='warn'?'#ffba55':tone==='bad'?'#ff6b6b':'#3a68b1';
-    m.style.borderColor=col; m.textContent=text; messagesEl.appendChild(m);
-  }
+/* ===== Allocation (DDI early + Fly last + safety) ===== */
+function allocate(){
   clearMsgs();
   if(!rows.length){ setStatus('Please upload a CSV first.'); return; }
   if(!boats.length){ setStatus('No boats in use. Click "Reset boats".'); return; }
 
-  // ----- snapshot boats -----
   const B = boats.map(b=>({
     name:b.name,seats:b.seats,toilet:b.toilet,
     tagDDI:!!b.tagDDI, tagFly:!!b.tagFly, tagEE:!!b.tagEE, tagWH:!!b.tagWH,
@@ -328,26 +288,20 @@ function allocate(){function allocate(){
     pax:[], count:0
   }));
   const eff = b => Math.max(0,b.seats-b.hold);
-  const edges = (function edgeOrder(n){ const res=[]; for(let a=0,b=n-1;a<=b;a++,b--){ res.push(a); if(b>a) res.push(b);} return res; })(B.length);
+  const edges = edgeOrder(B.length);
   const lastIdx = edges[1] ?? (B.length-1);
   const secondLastIdx = Math.max(0, B.length-2);
   const edgeBoats = edges.map(i=>({i,b:B[i]}));
-  const tagOrder = tag => edgeBoats
-    .filter(o=>o.b[`tag${tag}`])
-    .sort((a,b)=>edges.indexOf(a.i)-edges.indexOf(b.i));
-
-  // ----- sectioning (quartiles) -----
-  const distinct = [...new Set(rows.map(r=>r.timeMins).filter(v=>v!=null))].sort((a,b)=>a-b);
-  function quartileSection(mins){
-    if(mins==null || !distinct.length) return 'Unknown';
-    const q1=distinct[Math.floor(distinct.length*.25)];
-    const q2=distinct[Math.floor(distinct.length*.50)];
-    const q3=distinct[Math.floor(distinct.length*.75)];
-    if(mins<=q1) return '1st'; if(mins<=q2) return '2nd'; if(mins<=q3) return '3rd'; return '4th';
+  const tagOrder = tag => edgeBoats.filter(o=>o.b[`tag${tag}`]).sort((a,b)=>edges.indexOf(a.i)-edges.indexOf(b.i));
+  function sectionEdgeOrder(section){
+    if(section==='1st'||section==='2nd'){ const wl = edges.filter(i=>i!==lastIdx); return [...wl,lastIdx]; }
+    return edges;
   }
-  rows.forEach(r=>r.section = quartileSection(r.timeMins));
+  function addPax(i,r,tags=[],hl=[]){ const need=r.num||1; const b=B[i]; b.pax.push({row:r,count:need,tags:new Set(tags),highlights:new Set(hl)}); b.count+=need; }
 
-  // ----- matchers -----
+  const distinct=[...new Set(rows.map(r=>r.timeMins).filter(v=>v!=null))].sort((a,b)=>a-b);
+  rows.forEach(r=>r.section = quartileSection(r.timeMins, distinct));
+
   const isDDI   = r => /daydream\s*island/i.test(r.pu);
   const isOwn   = r => /(own\s*way|tbc|not\s*sure)/i.test(r.pu);
   const isEE    = r => /\bee\b/i.test(r.notes||'');
@@ -358,48 +312,23 @@ function allocate(){function allocate(){
   const charter = r => /charter/i.test(r.pu)||/charter/i.test(r.notes||'');
   const wHoldName = r => /\bweather\s*hold\b/i.test(r.clientRaw);
 
-  // ----- filter unwanted rows -----
   const filtered = rows.filter(r=>!wHoldName(r) && !charter(r));
   const unassigned = new Set(filtered);
 
-  // ----- assumptions you requested -----
-  // DDI treated as earliest; F+R treated as latest/Unknown
-  filtered.forEach(r=>{
-    if(isDDI(r)) r.section = '1st';
-    if(hasFR(r)) r.section = 'Unknown';
-  });
+  // assumptions
+  filtered.forEach(r=>{ if(isDDI(r)) r.section='1st'; if(hasFR(r)) r.section='Unknown'; });
 
-  // helpers
-  function addPax(i,r,tags=[],hl=[]){
-    const need=r.num||1; const b=B[i];
-    b.pax.push({row:r,count:need,tags:new Set(tags),highlights:new Set(hl)});
-    b.count+=need;
-  }
-  function sectionEdgeOrder(section){
-    // early sections avoid the *last* boat until needed
-    if(section==='1st'||section==='2nd'){
-      const wl = edges.filter(i=>i!==lastIdx);
-      return [...wl,lastIdx];
-    }
-    return edges;
-  }
-
-  // ===== 1) DDI FIRST (only DDI-tagged boats) =====
+  /* DDI first */
   let ddiBoats = tagOrder('DDI');
   const ddiRows = filtered.filter(isDDI);
-  if(ddiRows.length && ddiBoats.length===0 && B.length){
-    B[0].tagDDI = true; ddiBoats = tagOrder('DDI'); pushMsg('Auto-tagged earliest boat as DDI.','warn');
-  }
+  if(ddiRows.length && ddiBoats.length===0 && B.length){ B[0].tagDDI=true; ddiBoats=tagOrder('DDI'); pushMsg('Auto-tagged earliest boat as DDI.','warn'); }
   for(const r of ddiRows){
     if(!unassigned.has(r)) continue; const need=r.num||1;
-    for(const {i} of ddiBoats){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['DDI']); unassigned.delete(r); break; }
-    }
+    for(const {i} of ddiBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['DDI']); unassigned.delete(r); break; } }
   }
 
-  // ===== 2) F+R STRICT (latest Fly; overflow to 2nd last non-DDI) =====
-  const flyRows = filtered
-    .filter(r=>hasFR(r) && !earlyBoat(r))
+  /* Fly+Raft strict */
+  const flyRows = filtered.filter(r=>hasFR(r) && !earlyBoat(r))
     .sort((a,b)=>{
       const rank = s => ({'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 5);
       const ra=rank(a.section), rb=rank(b.section); if(ra!==rb) return ra-rb;
@@ -407,62 +336,40 @@ function allocate(){function allocate(){
     });
 
   let flyBoats = tagOrder('Fly');
-  if(flyRows.length && flyBoats.length===0){
-    B[lastIdx].tagFly = true; flyBoats = tagOrder('Fly'); pushMsg('No Fly boat tagged — auto-tagged latest boat.','warn');
-  }
+  if(flyRows.length && flyBoats.length===0){ B[lastIdx].tagFly=true; flyBoats=tagOrder('Fly'); pushMsg('No Fly boat tagged — auto-tagged latest boat.','warn'); }
   const flyLatestFirst = flyBoats.slice().reverse();
-
   function overflowForFly(cnt){
-    const candidates = [];
-    if(secondLastIdx!==lastIdx) candidates.push(secondLastIdx);
+    const candidates = []; if(secondLastIdx!==lastIdx) candidates.push(secondLastIdx);
     for(let i=B.length-3;i>=0;i--) candidates.push(i);
-    for(const i of candidates){
-      const b=B[i]; if(b.tagDDI) continue;
-      if(b.count+cnt<=eff(b)) return i;
-    }
+    for(const i of candidates){ const b=B[i]; if(b.tagDDI) continue; if(b.count+cnt<=eff(b)) return i; }
     return null;
   }
-
   for(const r of flyRows){
     if(!unassigned.has(r)) continue; const need=r.num||1;
-    const order = (r.section==='Unknown'||r.section==='4th'||r.section==='3rd') ? flyLatestFirst : flyBoats;
+    const order=(r.section==='Unknown'||r.section==='4th'||r.section==='3rd')?flyLatestFirst:flyBoats;
     let placed=false;
-    for(const {i} of order){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['F+R']); unassigned.delete(r); placed=true; break; }
-    }
-    if(!placed){
-      const over = overflowForFly(need);
-      if(over!=null){ addPax(over,r,['F+R'],['Fly-Raft overflow']); unassigned.delete(r); }
-      else pushMsg(`F+R "${r.clientRaw}" could not find Fly/overflow capacity.`, 'bad');
-    }
+    for(const {i} of order){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['F+R']); unassigned.delete(r); placed=true; break; } }
+    if(!placed){ const over=overflowForFly(need); if(over!=null){ addPax(over,r,['F+R'],['Fly-Raft overflow']); unassigned.delete(r); } else pushMsg(`F+R "${r.clientRaw}" could not find Fly/overflow capacity.`,'bad'); }
   }
 
-  // ===== 3) EE =====
+  /* EE */
   let eeBoats = tagOrder('EE');
   for(const r of filtered.filter(isEE)){
     if(!unassigned.has(r)) continue; const need=r.num||1;
     const earlyEE = (r.section==='1st'||r.section==='2nd');
     if(earlyEE && B.length>=3){
       let placed=false;
-      for(const i of sectionEdgeOrder(r.section)){
-        const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE']); placed=true; break; }
-      }
+      for(const i of sectionEdgeOrder(r.section)){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE']); placed=true; break; } }
       if(placed){ unassigned.delete(r); continue; }
     }
     let placed=false;
-    const eeLate = eeBoats.length ? eeBoats.slice().reverse() : [{i:lastIdx}];
-    for(const {i} of eeLate){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE'],[earlyEE?'Early EE moved later':'']); placed=true; break; }
-    }
-    if(!placed){
-      for(const {i} of edgeBoats){
-        const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE'],['EE by capacity']); placed=true; break; }
-      }
-    }
+    const eeLate = eeBoats.length?eeBoats.slice().reverse():[{i:lastIdx}];
+    for(const {i} of eeLate){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE'],[earlyEE?'Early EE moved later':'']); placed=true; break; } }
+    if(!placed){ for(const {i} of edgeBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE'],['EE by capacity']); placed=true; break; } } }
     if(placed) unassigned.delete(r);
   }
 
-  // ===== 4) MAP (south only, same-boat grouping) =====
+  /* MAP (south only) */
   const isSouth = el('tour').value==='south';
   function hasMAP(row){ return /\*MAP\*/i.test(row.clientRaw); }
   if(isSouth){
@@ -472,43 +379,31 @@ function allocate(){function allocate(){
       const need=r.num||1; let placed=false;
       const scan = anchor!=null?[{i:anchor}]:edgeBoats;
       for(const {i} of scan){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['MAP']); unassigned.delete(r); anchor=i; placed=true; break; } }
-      if(!placed){
-        for(const {i} of edgeBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['MAP'],['*MAP* fallback']); unassigned.delete(r); anchor=i; break; } }
-      }
+      if(!placed){ for(const {i} of edgeBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['MAP'],['*MAP* fallback']); unassigned.delete(r); anchor=i; break; } } }
     }
   }
 
-  // ===== 5) Infant prefer big =====
-  const infantRows = filtered.filter(r=>infant(r) && unassigned.has(r));
-  if(infantRows.length){
-    const pref = B.map((b,i)=>({i,b}))
-      .sort((a,b)=>(b.b.seats===32)-(a.b.seats===32)||(b.b.toilet?1:0)-(a.b.toilet?1:0)||edges.indexOf(a.i)-edges.indexOf(b.i));
-    for(const r of infantRows){
-      const need=r.num||1; let placed=false;
-      for(const {i} of pref){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['Infant']); unassigned.delete(r); placed=true; break; } }
-      if(!placed){
-        for(const {i} of edgeBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['Infant'],['Infant fallback']); unassigned.delete(r); break; } }
-      }
-    }
+  /* Infant prefer big */
+  for(const r of filtered.filter(r=>infant(r)).filter(r=>unassigned.has(r))){
+    const need=r.num||1; let placed=false;
+    const pref=B.map((b,i)=>({i,b})).sort((a,b)=>(b.b.seats===32)-(a.b.seats===32)||(b.b.toilet?1:0)-(a.b.toilet?1:0)||edges.indexOf(a.i)-edges.indexOf(b.i));
+    for(const {i} of pref){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['Infant']); unassigned.delete(r); placed=true; break; } }
+    if(!placed){ for(const {i} of edgeBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['Infant'],['Infant fallback']); unassigned.delete(r); break; } } }
   }
 
-  // ===== 6) Own way/TBC/not sure → later bias =====
-  for(const r of filtered.filter(r=>isOwn(r) && unassigned.has(r))){
+  /* Own way / TBC later */
+  for(const r of filtered.filter(r=>isOwn(r)&&unassigned.has(r))){
     const need=r.num||1;
-    for(const i of edges.slice().reverse()){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Own way → later']); unassigned.delete(r); break; }
-    }
+    for(const i of edges.slice().reverse()){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Own way → later']); unassigned.delete(r); break; } }
   }
 
-  // ===== 7) Early boat override for F+R (“early boat” in notes) =====
+  /* Early boat override for FR */
   for(const r of filtered.filter(r=>earlyBoat(r)&&hasFR(r))){
     if(!unassigned.has(r)) continue; const need=r.num||1;
-    for(const {i} of edgeBoats){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Early boat override (ignored F+R)']); unassigned.delete(r); break; }
-    }
+    for(const {i} of edgeBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Early boat override (ignored F+R)']); unassigned.delete(r); break; } }
   }
 
-  // ===== 8) Baseline fill by section (edges-first; early avoids last) =====
+  /* Baseline fill */
   const orderSec={'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4};
   [...unassigned].sort((a,b)=>{
     const da=orderSec[a.section]??4, db=orderSec[b.section]??4;
@@ -516,17 +411,11 @@ function allocate(){function allocate(){
     return (a.timeMins??1e9)-(b.timeMins??1e9);
   }).forEach(r=>{
     const need=r.num||1; let placed=false;
-    for(const i of sectionEdgeOrder(r.section)){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r); placed=true; break; }
-    }
-    if(!placed){
-      for(const {i} of edgeBoats){
-        const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Capacity fallback']); break; }
-      }
-    }
+    for(const i of sectionEdgeOrder(r.section)){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r); placed=true; break; } }
+    if(!placed){ for(const {i} of edgeBoats){ const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Capacity fallback']); break; } }
   });
 
-  // ===== 9) SAFETY: F+R never on DDI; F+R only on Fly or allowed overflow =====
+  /* Safety: FR never on DDI; enforce Fly/overflow only */
   (function enforceFR(){
     const flyIdx = tagOrder('Fly').map(o=>o.i);
     for(let i=0;i<B.length;i++){
@@ -538,41 +427,26 @@ function allocate(){function allocate(){
         if(flyIdx.includes(i)) continue;
         const need=p.count;
         let moved=false;
-        // never on DDI
         if(B[i].tagDDI){
-          for(const tgt of flyIdx.slice().reverse()){
-            const tb=B[tgt]; if(tb.count+need<=eff(tb)){ b.pax.splice(k,1); b.count-=need; addPax(tgt,p.row,[...p.tags],['Moved from DDI → Fly']); moved=true; k--; break; }
-          }
+          for(const tgt of flyIdx.slice().reverse()){ const tb=B[tgt]; if(tb.count+need<=eff(tb)){ b.pax.splice(k,1); b.count-=need; addPax(tgt,p.row,[...p.tags],['Moved from DDI → Fly']); moved=true; k--; break; } }
           if(!moved){
-            const over = (function(cnt){
-              const can=[]; if(secondLastIdx!==lastIdx) can.push(secondLastIdx);
-              for(let x=B.length-3;x>=0;x--) can.push(x);
-              for(const x of can){ const bb=B[x]; if(bb.tagDDI) continue; if(bb.count+cnt<=eff(bb)) return x; }
-              return null;
-            })(need);
+            const over=(function(cnt){ const can=[]; if(secondLastIdx!==lastIdx) can.push(secondLastIdx); for(let x=B.length-3;x>=0;x--) can.push(x);
+              for(const x of can){ const bb=B[x]; if(bb.tagDDI) continue; if(bb.count+cnt<=eff(bb)) return x; } return null; })(need);
             if(over!=null){ b.pax.splice(k,1); b.count-=need; addPax(over,p.row,[...p.tags],['Moved from DDI → overflow']); k--; moved=true; }
           }
           if(!moved){ p.highlights.add('FR rule violation (no Fly/overflow capacity)'); }
           continue;
         }
-        // not DDI & not Fly → try to move to Fly or overflow
-        for(const tgt of flyIdx.slice().reverse()){
-          const tb=B[tgt]; if(tb.count+need<=eff(tb)){ b.pax.splice(k,1); b.count-=need; addPax(tgt,p.row,[...p.tags],['Moved to Fly']); moved=true; k--; break; }
-        }
+        for(const tgt of flyIdx.slice().reverse()){ const tb=B[tgt]; if(tb.count+need<=eff(tb)){ b.pax.splice(k,1); b.count-=need; addPax(tgt,p.row,[...p.tags],['Moved to Fly']); moved=true; k--; break; } }
         if(!moved){
-          const over = (function(cnt){
-            const can=[]; if(secondLastIdx!==lastIdx) can.push(secondLastIdx);
-            for(let x=B.length-3;x>=0;x--) can.push(x);
-            for(const x of can){ const bb=B[x]; if(bb.tagDDI) continue; if(bb.count+cnt<=eff(bb)) return x; }
-            return null;
-          })(need);
+          const over=(function(cnt){ const can=[]; if(secondLastIdx!==lastIdx) can.push(secondLastIdx); for(let x=B.length-3;x>=0;x--) can.push(x);
+            for(const x of can){ const bb=B[x]; if(bb.tagDDI) continue; if(bb.count+cnt<=eff(bb)) return x; } return null; })(need);
           if(over!=null){ b.pax.splice(k,1); b.count-=need; addPax(over,p.row,[...p.tags],['Fly overflow']); k--; }
-        }
       }
-    }
+    } }
   })();
 
-  // ===== 10) Edge fill — pack first and last (NEVER move DDI; NEVER pull FR into non-Fly) =====
+  /* Edge fill — pack first and last (never move DDI; never pull FR into non-Fly) */
   function tryPull(toIdx, preferLateOnly){
     const dest=B[toIdx]; if(dest.count>=eff(dest)) return false;
     const isDestFly = dest.tagFly;
@@ -585,8 +459,8 @@ function allocate(){function allocate(){
         const p=src.pax[k];
         const isFR = p.tags.has('F+R') || /\(\s*F\s*\+\s*R\s*\)/i.test(p.row.clientRaw) || noteFly(p.row);
         const isDDI = p.tags.has('DDI');
-        if(isDDI) continue;                  // never move DDI during rebalancing
-        if(isFR && !isDestFly) continue;     // never pull FR into non-Fly
+        if(isDDI) continue;
+        if(isFR && !isDestFly) continue;
         if(preferLateOnly && !['Unknown','4th','3rd'].includes(p.row.section)) continue;
         if(dest.count + p.count <= eff(dest)){
           src.pax.splice(k,1); src.count-=p.count; addPax(toIdx,p.row,[...p.tags],[...p.highlights,'Edge fill']); return true;
@@ -598,7 +472,7 @@ function allocate(){function allocate(){
   for(const idx of [edges[0], edges[1]].filter(v=>v!=null)){ let ch=true; while(ch){ ch=tryPull(idx,true); } }
   for(const idx of [edges[0], edges[1]].filter(v=>v!=null)){ let ch=true; while(ch){ ch=tryPull(idx,false); } }
 
-  // ===== 11) Render output =====
+  /* Render output */
   const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
   const results = el('results'); results.innerHTML='';
   let total=0, cap=0;
@@ -649,7 +523,6 @@ function allocate(){function allocate(){
   results.prepend(summary);
 
   // download
-  const toCSV = rows => rows.map(r=>r.map(v=>{ if(v==null)return''; v=String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\n');
   const csv = toCSV(out); const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob);
   const dl=document.getElementById('download');
   dl.onclick=()=>{ const stamp=new Date().toISOString().slice(0,10); const a=document.createElement('a'); a.href=url; a.download=`boat-split-${document.getElementById('tour').value}-${stamp}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
@@ -657,10 +530,11 @@ function allocate(){function allocate(){
   setStatus('Allocation complete.');
 }
 
-/* Wire-up */
+/* ===== Wiring ===== */
 function wire(){
   document.getElementById('resetBoats').onclick=()=>{ boats=cloneBoats(); renderBoats(); setStatus('Boats reset.'); };
   document.getElementById('run').onclick=allocate;
+
   document.getElementById('file').addEventListener('change', async e=>{
     clearMsgs();
     const f=e.target.files?.[0]; if(!f) return;
@@ -697,7 +571,7 @@ function wire(){
       const timeMins = parseTimeToSortable(time);
 
       return { clientRaw, num, pu, time, timeMins, notes, phone, flyFromCount: flyFromAny };
-    }).filter(r=>!/\bweather\s*hold\b/i.test(r.clientRaw));
+    }).filter(r=>!/\bweather\s*hold\b/i.test(r.clientRaw)); // ignore placeholder WEATHER HOLD rows
 
     document.getElementById('results').innerHTML='<div class="muted">File loaded. Configure boats, then <b>Allocate</b>.</div>';
     document.getElementById('download').disabled=true;
@@ -705,12 +579,12 @@ function wire(){
   });
 }
 
-/* Boot */
+/* ===== Boot (guaranteed boats on load) ===== */
 function init(){
   boats = cloneBoats();
-  renderBoats();        // ← ensures boats are visible immediately
+  renderBoats();                 // ← ensures boats visible immediately
   wire();
-  setStatus('Ready. (v=contrast1)');
+  setStatus('Ready. (v=fix-contrast3)');
 }
 if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', init); } else { init(); }
 </script>
