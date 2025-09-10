@@ -171,7 +171,7 @@ function parseCSV(text){
 const COL_ALIASES = {
   client:["client","name","full name","passenger","pax name"],
   num:["no. pass.","no pass","passengers","pax","qty","count","no.pass","no pass.","no of pax"],
-  pu:["p/u point","pickup point","p/u","pick up","pickup","location","p/u address","pickup address","pu point"],
+  pu:["p/u point","pickup point","p/u","pick up","pickup","location","p/u address","pickup address","pu point","accommodation","accom"],
   time:["time","pickup time","p/u time","pu time"],
   notes:["pickup notes","notes","comments","pu comments","p/u notes","pu notes","comment"],
   phone:["phone","mobile","contact","contact phone"]
@@ -298,6 +298,9 @@ function allocate(){
   }));
   const eff = b => Math.max(0,b.seats-b.hold);
 
+  // Stats for header chips
+  let usedUnknownBottomUp=false, usedEarly=false, usedOwnWayLatest=false;
+
   /* ---- Proximity helpers ---- */
   function sectionTargetIndex(section, n){
     if(section==='1st') return 0;
@@ -375,6 +378,8 @@ function allocate(){
   const wantsEarly = r => /early\s*boat/i.test(r.notes||'');
   const charter = r => /charter/i.test(r.pu);
   const wHoldName = r => /\bweather\s*hold\b/i.test(r.clientRaw);
+  const isOwnWay = r => /(own\s*way|tba|tbc|not\s*[-\s]*sure|unsure|unknown)/i.test(r.pu||'') ||
+                        /(own\s*way|tba|tbc|not\s*[-\s]*sure|unsure|unknown)/i.test(r.notes||'');
 
   // rows: remove WEATHER HOLD and charter, record charter for warning
   const prepared = rows.slice();
@@ -508,26 +513,45 @@ function allocate(){
   /* ===== 4) EARLY BOAT requests (after DDI & TW) — push to earliest boat possible */
   function placeEarliest(r){
     const need=r.num||1;
-    // prefer earliest non-DDI to avoid crowding DDI; then allow DDI if needed
     const tryOrders = [
-      [...Array(B.length).keys()].filter(i=>!B[i].tagDDI), // 0..n-1 excluding DDI
-      [...Array(B.length).keys()]                           // 0..n-1 all boats
+      [...Array(B.length).keys()].filter(i=>!B[i].tagDDI), // exclude DDI first
+      [...Array(B.length).keys()]                           // then allow DDI if needed
     ];
     for(const order of tryOrders){
       for(const i of order){
         const capLeft = eff(B[i]) - B[i].count;
-        if(capLeft >= need){ addPax(i,r,['Early boat']); return true; }
+        if(capLeft >= need){ addPax(i,r,['Early boat']); usedEarly=true; return true; }
         if(tryMakeRoomWithSwap(i, need - capLeft, '1st', /*requireFly=*/false)){
-          addPax(i,r,['Early boat'],['Local swap to get earliest boat']);
-          return true;
+          addPax(i,r,['Early boat'],['Local swap to get earliest boat']); usedEarly=true; return true;
         }
       }
     }
     return false;
   }
   for(const r of filtered.filter(rr=>wantsEarly(rr) && unassigned.has(rr))){
-    // Early boat ignores EE/FR preferences to minimise waiting.
     if(placeEarliest(r)) unassigned.delete(r);
+  }
+
+  /* ===== 4.5) OWN WAY / NOT SURE / TBA — force to LATEST possible boat ===== */
+  function placeLatest(r, tagList=[], highlightNote=''){
+    const need=r.num||1;
+    const orders = [
+      [...Array(B.length).keys()].filter(i=>!B[i].tagDDI).reverse(), // prefer non-DDI, last → first
+      [...Array(B.length).keys()].reverse()                           // then include DDI if needed
+    ];
+    for(const order of orders){
+      for(const i of order){
+        const capLeft = eff(B[i]) - B[i].count;
+        if(capLeft >= need){ addPax(i,r,tagList,highlightNote?[highlightNote]:[]); usedOwnWayLatest=true; return true; }
+        if(tryMakeRoomWithSwap(i, need - capLeft, '4th', /*requireFly=*/false)){
+          addPax(i,r,tagList,['Local swap to push later'].concat(highlightNote?[highlightNote]:[])); usedOwnWayLatest=true; return true;
+        }
+      }
+    }
+    return false;
+  }
+  for(const r of filtered.filter(rr=>isOwnWay(rr) && unassigned.has(rr))){
+    if(placeLatest(r,['Own way → latest'])) unassigned.delete(r);
   }
 
   /* ===== 5) EE — prefer EE boats, but:
@@ -541,16 +565,21 @@ function allocate(){
     const ordered = indicesBySection(r.section);
     for(const i of ordered){
       const capLeft = eff(B[i]) - B[i].count;
-      if(capLeft >= need){ addPax(i,r,tagList,highlightNote?[highlightNote]:[]); return true; }
+      if(capLeft >= need){
+        addPax(i,r,tagList,highlightNote?[highlightNote]:[]);
+        if(r.section==='Unknown') usedUnknownBottomUp=true;
+        return true;
+      }
       if(tryMakeRoomWithSwap(i, need - capLeft, r.section, /*requireFly=*/false)){
         addPax(i,r,tagList, ['Local swap to keep near section'].concat(highlightNote?[highlightNote]:[]));
+        if(r.section==='Unknown') usedUnknownBottomUp=true;
         return true;
       }
     }
     // final fallback: any seat anywhere — Unknown should prefer last→first
     if(r.section==='Unknown'){
       for(let i=B.length-1;i>=0;i--){
-        if(B[i].count + need <= eff(B[i])){ addPax(i,r,tagList, ['Capacity fallback (bottom-up)'].concat(highlightNote?[highlightNote]:[])); return true; }
+        if(B[i].count + need <= eff(B[i])){ addPax(i,r,tagList, ['Capacity fallback (bottom-up)'].concat(highlightNote?[highlightNote]:[])); usedUnknownBottomUp=true; return true; }
       }
     }else{
       for(let i=0;i<B.length;i++){
@@ -598,6 +627,14 @@ function allocate(){
   /* ===== Render output ===== */
   const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
   const results = el('results'); results.innerHTML='';
+
+  // Header chips for run-level behaviours
+  const meta=document.createElement('div'); meta.className='chips'; meta.style.margin='4px 0 8px';
+  if(usedUnknownBottomUp) meta.innerHTML += '<span class="chip">Unknown: bottom-up</span>';
+  if(usedEarly) meta.innerHTML += '<span class="chip">Early boat honoured</span>';
+  if(usedOwnWayLatest) meta.innerHTML += '<span class="chip">Own way → latest</span>';
+  if(meta.innerHTML) results.appendChild(meta);
+
   let total=0, totalEffCap=0;
 
   if(ignoredCharter.length){
@@ -741,7 +778,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus('Ready. (v=early-boat+unknown-bottom-up+ignore-blanks+ee-first-override)');
+    setStatus('Ready. (v=own-way→latest+early-boat+unknown-bottom-up+ignore-blanks)');
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
