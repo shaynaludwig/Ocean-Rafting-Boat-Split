@@ -7,7 +7,7 @@
 
 <!-- Cache buster -->
 <script>
-  const APP_VERSION = '2025-09-10-21-nosplit-nodup-ownway-balance';
+  const APP_VERSION = '2025-09-10-22-dedupe-spread-balance';
   (function(){
     try{
       const u = new URL(location.href);
@@ -150,6 +150,7 @@ function pushMsg(text,tone=''){
   m.style.borderColor=col; m.textContent=text; messagesEl.appendChild(m);
 }
 const norm = s => (s??'').toString().trim();
+const lower = s => norm(s).toLowerCase();
 const escapeHtml = s => (s??'').replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
 const rowIsBlank = row => !row || !row.length || row.every(c => norm(c)==='');
 
@@ -191,9 +192,9 @@ const COL_ALIASES = {
   phone:["phone","mobile","contact","contact phone"]
 };
 function findColIndex(h,keys){
-  const lower=h.map(x=>x.toLowerCase());
-  for(const k of keys){ const i=lower.indexOf(k); if(i!==-1) return i; }
-  for(let i=0;i<lower.length;i++){ if(keys.some(k=>lower[i].includes(k))) return i; }
+  const lowerh=h.map(x=>x.toLowerCase());
+  for(const k of keys){ const i=lowerh.indexOf(k); if(i!==-1) return i; }
+  for(let i=0;i<lowerh.length;i++){ if(keys.some(k=>lowerh[i].includes(k))) return i; }
   return -1;
 }
 function parseTimeToSortable(t){
@@ -298,7 +299,7 @@ function renderBoats(){
   }
 }
 
-/* ========= Allocation (no-split, prevent-dup, own-way balance) ========= */
+/* ========= Allocation (dedupe + no-split + balance + spread) ========= */
 function allocate(){
   clearMsgs(); popups = [];
   if(!rows.length){ setStatus('Please upload a CSV first.'); return; }
@@ -330,14 +331,14 @@ function allocate(){
     /(own\s*way|tba|tbc|not\s*[-\s]*sure|unsure|unknown)/i.test(r.notes||'') ||
     r.section==='Unknown';
 
-  // Filter out blanks / weather hold / charter
+  // Filter out Weather Hold / Charter (but NOT blanks — those were removed at load)
   const charter = r => /charter/i.test(r.pu);
   const wHoldName = r => /\bweather\s*hold\b/i.test(r.clientRaw);
   const prepared = rows.slice();
   const ignoredCharter = prepared.filter(r=>charter(r));
   const filtered = prepared.filter(r=>!wHoldName(r) && !charter(r));
 
-  // Decorate rows & give unique IDs
+  // Decorate rows & unique IDs (if not present)
   filtered.forEach(r=>{
     r.isDDI=isDDI(r);
     r.isFR =hasFR(r);
@@ -372,7 +373,6 @@ function allocate(){
       section: sec,
       isDDI: any('isDDI'),
       isFR:  any('isFR'),
-      // EE preference is ignored if section is 1st (to avoid waiting)
       preferEE: any('isEE') && sec!=='1st',
       wantsEarly: any('wantsEarly'),
       isOwnWayOrUnknown: any('isOwnWayOrUnknown'),
@@ -413,7 +413,6 @@ function allocate(){
       if(B[i].count + e.count <= eff(B[i])){ addEntry(i,e); placedId.add(r._id); done=true; break; }
     }
     if(!done){
-      // if no space on tagged DDI, still lock but allow spill to any with space
       for(let i=0;i<N;i++){
         if(B[i].count + e.count <= eff(B[i])){ e.highlights.add('DDI overflow'); addEntry(i,e); placedId.add(r._id); done=true; break; }
       }
@@ -470,7 +469,7 @@ function allocate(){
   /* ====== 4) Order units for placement ====== */
   units.sort((A,B_)=>{
     const a=flags(A), b=flags(B_);
-    // earlier sections first; then wantsEarly; own-way last
+    // earlier sections first; then wantsEarly; own-way last; larger groups first (to secure blocks)
     const sa=secOrder(a.section), sb=secOrder(b.section);
     if(sa!==sb) return sa-sb;
     if(a.wantsEarly!==b.wantsEarly) return (b.wantsEarly?1:0)-(a.wantsEarly?1:0);
@@ -482,21 +481,18 @@ function allocate(){
     const f=flags(entry);
     const usable=[...Array(N).keys()].filter(i=>canSeatEntryOnBoat(entry,i));
     const t = sectionTargetIndex(f.section, N);
-    // Order by closeness to target section
     usable.sort((a,b)=>Math.abs(a-t)-Math.abs(b-t)||a-b);
-    // EE preference (unless section 1st)
     if(f.preferEE){
       const ee=usable.filter(i=>B[i].tagEE), rest=usable.filter(i=>!B[i].tagEE);
       return [...ee,...rest];
     }
-    // Own way bias to later, but not strictly (balancer may move them earlier)
     if(f.isOwnWayOrUnknown){
-      return usable.sort((a,b)=>b-a);
+      return usable.sort((a,b)=>b-a); // bias to latest first
     }
     return usable;
   }
 
-  // Ripple helpers to make capacity on a target boat (without duplication)
+  // Ripple helpers
   function tryMoveEntry(fromIdx, entry, depth, seen){
     const rep = flags(entry).rep;
     for(const nb of neighbors(fromIdx, rep)){
@@ -532,10 +528,8 @@ function allocate(){
     return false;
   }
 
-  // Place all units (no duplicates by design)
+  // Place all units
   for(const unit of units){
-    // mark all row ids as "about to be placed" to prevent inclusion elsewhere
-    for(const r of unit.members){ if(placedId.has(r._id)) { /* should not happen */ } }
     const cands=candidateBoatsForEntry(unit);
     let placed=false;
     for(const i of cands){
@@ -544,7 +538,6 @@ function allocate(){
       if(rippleFree(i, unit.count, flags(unit).rep, 4, seen)){ addEntry(i,unit); unit.highlights.add('Ripple move'); unit.members.forEach(r=>placedId.add(r._id)); placed=true; break; }
     }
     if(!placed){
-      // Fallback: closest legal (may overflow if needed)
       const f = cands.length ? cands[0] : (flags(unit).isFR && flyBoats.length ? flyBoats[flyBoats.length-1] : N-1);
       unit.highlights.add('Overflow (no room after ripple)');
       addEntry(f, unit);
@@ -552,37 +545,29 @@ function allocate(){
     }
   }
 
-  /* ====== 5) Own Way / Unknown balancer ======
-     If later boats are over capacity while earlier boats have space,
-     move OWN-WAY/UNKNOWN entries forward and tag them to CONTACT.       */
+  /* ====== 5) Balance Own Way/Unknown forward into free seats ====== */
   function balanceOwnWayForward(){
-    // compute free seats and overflow
     const free = B.map(b=>eff(b)-b.count);
     const over = B.map(b=>Math.max(0, b.count - eff(b)));
     let moved = 0;
 
-    // while any later boat overfull and there exists earlier boat with free seats
     let changed=true; let guard=0;
     while(changed && guard++<100){
       changed=false;
-      // find the latest overfull boat
+      // latest overfull source
       let src = -1; for(let i=N-1;i>=0;i--){ if(over[i]>0){ src=i; break; } }
       if(src===-1) break;
-      // find best earlier sink with free seats
+      // best earlier sink with free seats
       let sink = -1; let maxFree=0;
       for(let j=0;j<src;j++){
-        if(free[j] > maxFree){ maxFree = free[j]; sink = j; }
+        if(free[j] > maxFree && !B[j].tagDDI){ maxFree = free[j]; sink = j; }
       }
       if(sink===-1 || maxFree<=0) break;
 
-      // candidates from src: own-way/unknown & not locked & legal on sink
       const cands = B[src].pax.filter(e=>{
         const f=flags(e);
-        if(e.locked) return false;
-        if(!f.isOwnWayOrUnknown) return false;
-        if(!canSeatEntryOnBoat(e, sink)) return false;
-        return true;
-      }).sort((a,b)=>b.count - a.count); // move bigger first to relieve faster
+        return !e.locked && f.isOwnWayOrUnknown && canSeatEntryOnBoat(e, sink);
+      }).sort((a,b)=>b.count - a.count);
 
       if(!cands.length) break;
 
@@ -602,6 +587,55 @@ function allocate(){
   }
   balanceOwnWayForward();
 
+  /* ====== 6) Overflow spread across non-DDI boats (fairness) ======
+     If still over capacity globally, spread some load off the last boat(s)
+     onto earlier NON-DDI boats even if it makes them slightly over.      */
+  function spreadOverflowMinimax(){
+    const cap = B.map(eff);
+    const slack = () => B.map((b,i)=>cap[i]-b.count); // positive = free, negative = over
+    let s = slack(); let guard=0; let moved=0;
+    const legalSink = idx => !B[idx].tagDDI; // don't push overflow onto DDI
+
+    while (s.some(v=>v<0) && guard++<200){
+      // source: boat with most negative slack (prefer later index)
+      let src = -1, worst = 1e9;
+      for(let i=N-1;i>=0;i--){ if(s[i] < worst){ worst = s[i]; src = i; } }
+      if(src<0 || s[src]>=0) break;
+
+      // sink: among non-DDI, pick with max slack (or least negative), prefer earlier
+      let sink = -1, best = -1e9;
+      for(let j=0;j<N;j++){
+        if(j===src || !legalSink(j)) continue;
+        if(s[j] > best){ best = s[j]; sink = j; }
+      }
+      if(sink<0) break;
+
+      // choose a movable candidate from src:
+      // 1) own-way/unknown first, 2) then later-section (3rd/Unknown), 3) then anything non-locked & legal
+      const pool = B[src].pax.filter(e=>!e.locked && canSeatEntryOnBoat(e,sink));
+      if(!pool.length) break;
+
+      const rank = e=>{
+        const f=flags(e);
+        if(f.isOwnWayOrUnknown) return 3;
+        if(f.section==='3rd' || f.section==='4th' || f.section==='Unknown') return 2;
+        return 1;
+      };
+      // Prefer smaller groups so we can fine-tune the distribution
+      pool.sort((a,b)=>rank(b)-rank(a) || a.count - b.count);
+
+      const e = pool[0];
+      removeEntry(src,e); addEntry(sink,e);
+      if(flags(e).isOwnWayOrUnknown) e.highlights.add('Overflow spread — contact earlier arrival');
+      else e.highlights.add('Overflow spread');
+
+      moved += e.count;
+      s = slack();
+    }
+    if(moved>0) pushMsg(`Spread ${moved} seat(s) from overfull late boats across non-DDI boats.`,`ok`);
+  }
+  spreadOverflowMinimax();
+
   /* ====== Render ====== */
   const results = el('results'); results.innerHTML='';
   let total=0, totalEffCap=0;
@@ -616,154 +650,4 @@ function allocate(){
     head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
     head.style.margin='8px 0 4px';
     const tagStr=[b.tagDDI?'DDI':'', b.tagFly?'Fly-Raft':'', b.tagEE?'EE':''].filter(Boolean).join('; ');
-    head.innerHTML = `<div><b>${idx+1}. ${b.name}</b> &nbsp; <span class="pill ${b.count<=eff(b)?'ok':'bad'}">${b.count}/${eff(b)}</span></div>
-      <div class="chips">
-        ${b.tagDDI?'<span class="chip">DDI</span>':''}
-        ${b.tagFly?'<span class="chip">Fly-Raft</span>':''}
-        ${b.tagEE?'<span class="chip">EE</span>':''}
-        ${b.toilet?'<span class="chip">🚻</span>':''}
-      </div>`;
-    results.appendChild(head);
-
-    const table=document.createElement('table');
-    table.innerHTML = `<thead><tr>
-      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Highlights</th>
-    </tr></thead>`;
-    const tb=document.createElement('tbody');
-
-    if(b.hold>0){
-      const tr=document.createElement('tr');
-      tr.innerHTML=`
-        <td>—</td><td>SEAT HOLD</td><td>${b.hold}</td>
-        <td></td><td></td><td></td>
-        <td><span class="pill tag">Hold</span></td>
-        <td><span class="pill warn">Seats reserved; not for allocation</span></td>`;
-      tb.appendChild(tr);
-      out.push([b.name,idx+1,b.hold,tagStr,'SEAT HOLD',b.hold,'','','','','Hold','Seats reserved; not for allocation','']);
-    }
-
-    let rowNumber = 0;
-    for(const e of b.pax){
-      for(const r of e.members){
-        const tr=document.createElement('tr');
-        tr.innerHTML = `
-          <td>${++rowNumber}</td>
-          <td>${escapeHtml(r.clientRaw)}</td>
-          <td>${r.num||1}</td>
-          <td>${escapeHtml(r.pu)}</td>
-          <td>${r.time||''}</td>
-          <td>${r.section}</td>
-          <td>${[...e.tags].map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
-          <td>${[...e.highlights].map(t=>`<span class="pill warn">${escapeHtml(t)}</span>`).join(' ')}</td>`;
-        tb.appendChild(tr);
-        out.push([b.name,idx+1,b.hold,tagStr,r.clientRaw,(r.num||1),r.pu,r.time||'',r.notes||'',r.phone||'',[...e.tags].join('; '),[...e.highlights].join('; '),r.section]);
-      }
-    }
-
-    table.appendChild(tb);
-    results.appendChild(table);
-  });
-
-  const summary=document.createElement('div'); summary.className='status';
-  summary.style.margin='10px 0 0';
-  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>
-    ${total>totalEffCap?'<span class="pill bad" style="margin-left:6px">Over capacity</span>':''}
-    <span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · prevent-dup + own-way balance</span>`;
-  results.prepend(summary);
-
-  // CSV Download
-  const toCSV = rows => rows.map(r=>r.map(v=>{
-    if(v==null) return '';
-    const s=String(v);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
-  }).join(',')).join('\n');
-  const csv = toCSV(out);
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob);
-  const dl=document.getElementById('download');
-  dl.onclick=()=>{ const stamp=new Date().toISOString().slice(0,10); const a=document.createElement('a'); a.href=url; a.download=`boat-split-${document.getElementById('tour').value}-${stamp}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
-  dl.disabled=false;
-
-  setStatus('Allocation complete.');
-}
-
-/* ========= Wiring ========= */
-function wire(){
-  el('resetBoats').onclick=()=>{ boats=cloneBoats(); renderBoats(); setStatus('Boats reset.'); };
-  el('run').onclick=allocate;
-
-  el('file').addEventListener('change', async e=>{
-    clearMsgs(); popups=[];
-    const f=e.target.files?.[0]; if(!f) return;
-    const text = await f.text();
-    const raw = parseCSV(text);
-
-    // IGNORE BLANK ROWS (header may not be first line)
-    const headerRowIndex = raw.findIndex(r => !rowIsBlank(r));
-    if(headerRowIndex === -1){ setStatus('Empty CSV.'); return; }
-    const header = raw[headerRowIndex].map(h=>h.trim());
-    const data = raw.slice(headerRowIndex+1).filter(r => !rowIsBlank(r));
-    const dropped = raw.length - (1 + data.length);
-    if(dropped>0) pushMsg(`Ignored ${dropped} blank row(s).`,'warn');
-
-    const idxClient=findColIndex(header,COL_ALIASES.client);
-    const idxNum   =findColIndex(header,COL_ALIASES.num);
-    const idxPU    =findColIndex(header,COL_ALIASES.pu);
-    const idxTime  =findColIndex(header,COL_ALIASES.time);
-    const idxNotes =findColIndex(header,COL_ALIASES.notes);
-    const idxPhone =findColIndex(header,COL_ALIASES.phone);
-
-    if(idxClient<0 || idxPU<0){ setStatus('Missing required columns: need at least Client and P/U Point.'); return; }
-
-    rows = data.map(r=>{
-      const clientRaw = norm(r[idxClient]);
-      const numRaw = (idxNum>=0 ? r[idxNum] : '').toString();
-      const FRfromCount  = /\(\s*F\s*\+\s*R\s*\)/i.test(numRaw);
-      const FRfromClient = /\(\s*F\s*\+\s*R\s*\)/i.test(clientRaw);
-      const FRfromNotes  = /\(\s*F\s*\+\s*R\s*\)/i.test(norm(idxNotes>=0?r[idxNotes]:'')); 
-      const flyFromAny   = FRfromCount || FRfromClient || FRfromNotes;
-
-      const numMatch = numRaw.match(/\d+/);
-      const num = Math.max(1, numMatch ? parseInt(numMatch[0],10) : 1);
-
-      const pu   = norm(r[idxPU]);
-      const time = norm(idxTime>=0?r[idxTime]:'');
-      const notes= norm(idxNotes>=0?r[idxNotes]:'');
-      const phone= norm(idxPhone>=0?r[idxPhone]:'');
-      const timeMins = parseTimeToSortable(time);
-
-      return { clientRaw, num, pu, time, timeMins, notes, phone, flyFromCount: flyFromAny };
-    });
-
-    el('results').innerHTML='<span class="muted">File loaded. Configure boats, then <b>Allocate</b>.</span>';
-    el('download').disabled=true;
-    setStatus(`Loaded ${rows.length} rows. (v=${APP_VERSION})`);
-  });
-}
-
-/* ========= Boot ========= */
-function init(){
-  try{
-    boats = cloneBoats();
-    renderBoats();
-    wire();
-    setStatus(`Ready. (v=${APP_VERSION} · prevent-dup + own-way balance)`);
-  }catch(e){
-    const host = document.querySelector('#results');
-    const pre = document.createElement('div');
-    pre.className='err';
-    pre.textContent='Init error: '+(e&&e.stack?e.stack:String(e));
-    host?.prepend(pre);
-  }
-}
-if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', init); } else { init(); }
-
-/* helper needed by wire() — keep here for scope */
-function findColIndex(h,keys){
-  const lower=h.map(x=>x.toLowerCase());
-  for(const k of keys){ const i=lower.indexOf(k); if(i!==-1) return i; }
-  for(let i=0;i<lower.length;i++){ if(keys.some(k=>lower[i].includes(k))) return i; }
-  return -1;
-}
-</script>
-</body>
-</html>
+    head.innerHTML = `<div><b>${idx+1}. ${b.name}</b> &nbsp; <span class="pill ${b.count<=eff(b)?'ok':'bad'}">${
