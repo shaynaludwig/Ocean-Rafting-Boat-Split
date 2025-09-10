@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -7,7 +7,7 @@
 
 <!-- Built-in cache buster: bump APP_VERSION when you update -->
 <script>
-  const APP_VERSION = '2025-09-10-2';
+  const APP_VERSION = '2025-09-10-3';
   (function () {
     try {
       const url = new URL(location.href);
@@ -341,7 +341,7 @@ function allocate(){
 
   // Strict eligibility for the FIRST boat:
   // - Allow 1st (always) and 2nd (preferred) sections
-  // - Block 3rd/4th/Unknown unless "desperate" final fallback
+  // - Block 3rd/4th/Unknown unless absolutely no seat exists in boats 2..N
   function eligibleForBoat(row, idx, desperate){
     if(idx!==0) return true;
     if(/early\s*boat/i.test(row.notes||'')) return true; // "early boat" overrides
@@ -477,7 +477,7 @@ function allocate(){
     }
   }
 
-  /* ===== 3) *TW* AFTER DDI & F+R ===== */
+  /* ===== 3) *TW* AFTER DDI & F+R (respect Boat-1 guard) ===== */
   function sectionRefMember(arr){
     const known = arr.filter(r=>r.section && r.section!=='Unknown');
     if(!known.length) return null;
@@ -501,10 +501,21 @@ function allocate(){
       return da-db || a-b;
     });
 
+    const hardBlockBoat1 = (refSec==='3rd'||refSec==='4th'||refSec==='Unknown');
+    // Pass 1: avoid Boat 1 for 3rd/4th/Unknown
     for(const i of ordered){
+      if(hardBlockBoat1 && i===0) continue;
       const capLeft = eff(B[i]) - B[i].count;
       if(capLeft >= need) return i;
       if(tryMakeRoomWithSwap(i, need - capLeft, refSec, requireFly)) return i;
+    }
+    // Pass 2: only if literally nowhere else, allow Boat 1
+    if(hardBlockBoat1){
+      const i=0;
+      const capLeft = eff(B[i]) - B[i].count;
+      if(capLeft >= need) return i;
+      if(tryMakeRoomWithSwap(i, need - capLeft, refSec, requireFly)) return i;
+      return null;
     }
     return null;
   }
@@ -518,7 +529,7 @@ function allocate(){
     const anyFR = group.some(isFRRow);
     const idx = tryPlaceGroupNearSection(group, anyFR);
     if(idx==null){
-      popups.push(`*TW* group "${anchor}" could not fit on target boat(s)${anyFR?' (Fly-Raft)':''} even after swaps. Tag another boat, reduce holds, or adjust numbers.`);
+      popups.push(`*TW* group "${anchor}" could not fit near section${anyFR?' (Fly-Raft)':''} even after swaps. Adjust tags/holds or numbers.`);
     }else{
       // remove prior placements for these rows (if any)
       for(let bi=0; bi<B.length; bi++){
@@ -605,22 +616,29 @@ function allocate(){
 
     // Secondary capacity fallback — still avoid first boat for 3rd/4th/Unknown
     if(r.section==='Unknown'){
-      for(let i=B.length-1;i>=0;i--){
-        if(!eligibleForBoat(r,i,false)) continue;
+      for(let i=B.length-1;i>=1;i--){ // skip 0
         if(B[i].count + need <= eff(B[i])){ addPax(i,r,tagList, ['Capacity fallback (bottom-up)'].concat(highlightNote?[highlightNote]:[])); usedUnknownBottomUp=true; return true; }
       }
     }else{
-      for(let i=0;i<B.length;i++){
-        if(!eligibleForBoat(r,i,false)) continue;
+      for(let i=1;i<B.length;i++){ // skip 0
         if(B[i].count + need <= eff(B[i])){ addPax(i,r,tagList, ['Capacity fallback'].concat(highlightNote?[highlightNote]:[])); return true; }
       }
     }
 
-    // DESPERATE final fallback — allow first boat even for 3rd/4th/Unknown
-    for(let i=0;i<B.length;i++){
-      if(!eligibleForBoat(r,i,true)) continue;
-      if(B[i].count + need <= eff(B[i])){ addPax(i,r,tagList, ['Desperate fallback'].concat(highlightNote?[highlightNote]:[])); return true; }
+    // DESPERATE final fallback — allow first boat ONLY if no seat anywhere else
+    for(let i=1;i<B.length;i++){
+      const capLeft = eff(B[i]) - B[i].count;
+      if(capLeft >= need) return false; // there IS a seat elsewhere; earlier logic should've placed. Prevent Boat 1.
     }
+    for(let i=1;i<B.length;i++){
+      const capLeft = eff(B[i]) - B[i].count;
+      if(tryMakeRoomWithSwap(i, need - Math.max(0,capLeft), r.section, false)){
+        addPax(i,r,tagList,['Desperate swap (kept off Boat 1)'].concat(highlightNote?[highlightNote]:[]));
+        return true;
+      }
+    }
+    // truly nowhere else:
+    if(B[0].count + need <= eff(B[0])){ addPax(0,r,tagList,['Desperate fallback (no seats anywhere)'].concat(highlightNote?[highlightNote]:[])); return true; }
     return false;
   }
 
@@ -813,7 +831,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus(`Ready. (v=${APP_VERSION} + first-boat guard for 3rd/4th/Unknown)`);
+    setStatus(`Ready. (v=${APP_VERSION} + strict Boat-1 guard for 3rd/4th/Unknown & TW)`);
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
