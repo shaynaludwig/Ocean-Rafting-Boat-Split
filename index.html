@@ -7,7 +7,7 @@
 
 <!-- Built-in cache buster: bump APP_VERSION when you update -->
 <script>
-  const APP_VERSION = '2025-09-10-6'; // ← bump this when you update
+  const APP_VERSION = '2025-09-10-8'; // ← bump this when you update
   (function () {
     try {
       const url = new URL(location.href);
@@ -49,7 +49,7 @@
        border:1px solid var(--line);background:#fff;color:#111827;cursor:pointer;text-decoration:none}
   .btn:hover{background:#f3f4f6}
   .btn-primary{background:var(--brand);border-color:var(--brand);color:#fff}
-  .btn-primary:hover{background:var(--brand-600)}
+  .btn-primary:hover{background:#brand-600}
   .btn-danger{background:#fff;border-color:#fca5a5;color:#b91c1c}
   .btn-danger:hover{background:#fee2e2}
   .btn[disabled]{opacity:.55;cursor:not-allowed}
@@ -661,7 +661,64 @@ function allocate(){
     if(unassigned.has(r) && placeNearSection(r)){ unassigned.delete(r); }
   });
 
-  /* ===== 7) GLOBAL SECONDARY OPTIMIZER: pairwise + cascade evacuation for Boat 1 ===== */
+  /* ===== 6.5) Edge-in repacker (outer → inner) ===== */
+  function tryPushLaterFrom(i){
+    const bi=B[i];
+    const candidates = bi.pax
+      .filter(e=>!Array.from(e.highlights||[]).some(h=>h.includes('*TW* grouped')))
+      .filter(e=>!e.tags.has('DDI'))
+      .filter(e=>{
+        const s=e.row.section; return (i===0)?(s==='3rd'||s==='4th'||s==='Unknown'):true;
+      })
+      .sort((a,b)=>{
+        const ra=sectionRank(a.row.section), rb=sectionRank(b.row.section);
+        if(ra!==rb) return ra-rb; // later first
+        const ta=a.row.timeMins??-1, tb=b.row.timeMins??-1;
+        return tb-ta; // later time first
+      });
+    for(const e of candidates){
+      for(let j=B.length-1;j>i;j--){
+        if(e.tags.has('F+R') && !B[j].tagFly) continue;
+        if(B[j].count + e.count <= eff(B[j])){
+          // move
+          bi.pax.splice(bi.pax.indexOf(e),1); bi.count -= e.count;
+          addPax(j, e.row, [...e.tags], [...e.highlights,'EDGE-IN: pushed later']);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  let changedEdge=true, edgePass=0;
+  while(changedEdge && edgePass<10){
+    changedEdge=false; edgePass++;
+    // left edge
+    if(tryPushLaterFrom(0)) changedEdge=true;
+    // right edge
+    const last=B.length-1;
+    const bj=B[last];
+    const pullers = [];
+    for(let j=last-1;j>=0;j--){
+      B[j].pax.forEach(e=>{
+        const sr=sectionRank(e.row.section);
+        if(sr>=3) pullers.push({j,e}); // earlier sections
+      });
+    }
+    pullers.sort((A,B2)=>{
+      const a=A.e, b=B2.e;
+      return (sectionRank(b.row.section)-sectionRank(a.row.section)) || ((a.row.timeMins??1e9)-(b.row.timeMins??1e9));
+    });
+    for(const {j,e} of pullers){
+      if(B[j+1].count + e.count <= eff(B[j+1])){
+        B[j].pax.splice(B[j].pax.indexOf(e),1); B[j].count -= e.count;
+        addPax(j+1, e.row, [...e.tags], [...e.highlights,'EDGE-IN: pulled outward']);
+        changedEdge=true; break;
+      }
+    }
+  }
+
+  /* ===== 7) GLOBAL OPTIMIZER with multi-booking freespace ===== */
+
   function isTWGrouped(entry){
     return Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped'));
   }
@@ -680,10 +737,8 @@ function allocate(){
       const s=entry.row.section;
       if(s==='3rd'||s==='4th'||s==='Unknown') return false; // Boat 1 guard
     }
-    // tags
     if(entry.tags.has('DDI') && !dest.tagDDI) return false;
     if(entry.tags.has('F+R') && !dest.tagFly) return false;
-    // capacity
     if(dest.count + cnt > eff(dest)) return false;
     return true;
   }
@@ -703,103 +758,172 @@ function allocate(){
     B[idx].count += entry.count;
   }
 
-  // Try to relocate 'entry' from 'fromIdx' to any later boat via single-hop or two-hop cascade
-  function tryCascadePlace(entry, fromIdx, noteBase){
-    const cnt = entry.count;
-    // 1) direct
-    for(let j=fromIdx+1;j<B.length;j++){
-      if(canLand(entry, j)){ removeEntryFromBoat(fromIdx, entry); addEntryToBoat(j, entry, noteBase+' (direct)'); return true; }
-    }
-    // 2) one-donor cascade: j blocked, move a late/movable donor from j to some k>j
-    for(let j=fromIdx+1;j<B.length;j++){
-      // choose donor on j: latest sections first
-      const donors = B[j].pax.filter(movable).sort((a,b)=>{
-        const ra=entryRank(a), rb=entryRank(b);
-        if(ra!==rb) return ra-rb; // later first
-        const ta=a.row.timeMins??-1, tb=b.row.timeMins??-1;
-        return tb-ta; // later time first
-      });
-      for(const d of donors){
-        for(let k=j+1;k<B.length;k++){
-          if(canLand(d,k)){
-            // perform cascade
-            removeEntryFromBoat(j,d); addEntryToBoat(k,d,'CASCADE: pushed later to free seat');
-            if(canLand(entry, j)){ removeEntryFromBoat(fromIdx, entry); addEntryToBoat(j, entry, noteBase+' (cascade)'); return true; }
-            // if still blocked, revert donor move? We’ll keep improvement (it’s still better ordering) and continue outer loops
-          }
+  // Subset DP: choose donors whose total >= target with minimal overage, preferring later sections
+  function chooseDonorSubset(entries, target){
+    const LIMIT = Math.min(target+12, 64); // allow some overage, keep DP small
+    const n = entries.length;
+    // dp[s] = {sum:s, idxs:[...], prefScore}
+    // prefScore: higher is better; later sections get higher weight; larger counts slightly preferred
+    const wSec = e => {
+      const r = entryRank(e); // 0..4
+      // later sections (0/1/2) get bigger boost
+      return (2 - Math.min(r,2)) * 100 + (e.count); // Unknown/4th/3rd > 2nd > 1st
+    };
+    const dp = Array(LIMIT+1).fill(null);
+    dp[0] = {sum:0, idxs:[], pref:0};
+    for(let i=0;i<n;i++){
+      const w = entries[i].count;
+      const gain = wSec(entries[i]);
+      for(let s=LIMIT-w; s>=0; s--){
+        if(!dp[s]) continue;
+        const cand = {sum:s+w, idxs:dp[s].idxs.concat([i]), pref:dp[s].pref + gain};
+        const cur = dp[s+w];
+        if(!cur) dp[s+w]=cand;
+        else{
+          // prefer more pref; tie-break by smaller sum
+          if(cand.pref>cur.pref || (cand.pref===cur.pref && cand.sum<cur.sum)) dp[s+w]=cand;
         }
       }
+    }
+    let best=null;
+    for(let s=target; s<=LIMIT; s++){
+      if(!dp[s]) continue;
+      if(!best) best=dp[s];
+      else{
+        const overA = best.sum - target, overB = s - target;
+        if(overB < overA) best=dp[s];
+        else if(overB===overA && dp[s].pref>best.pref) best=dp[s];
+      }
+    }
+    if(!best) return null;
+    return best.idxs.map(k=>entries[k]);
+  }
+
+  // Place a list of donors to later boats (>= startIdx+1), latest-first; rollback if any fail.
+  function placeDonorsLater(donors, startIdx){
+    const moves=[];
+    for(const d of donors){
+      let landed=false;
+      for(let j=B.length-1;j>=startIdx+1;j--){
+        if(canLand(d,j)){ // capacity+tags
+          moves.push({from:null, to:j, entry:d});
+          landed=true;
+          break;
+        }
+      }
+      if(!landed){
+        // rollback
+        for(const m of moves){
+          // no-op because we didn't actually apply yet
+        }
+        return false;
+      }
+    }
+    // Apply: remove donors from start boat, then add into targets
+    for(const d of donors){ removeEntryFromBoat(startIdx,d); }
+    for(const m of moves){ addEntryToBoat(m.to, m.entry, 'MULTI: donor pushed later'); }
+    return true;
+  }
+
+  // Try multi-booking swap: pull early from j → i by freeing space on i via subset of donors on i
+  function tryMultiSwap(i,j){
+    const bi=B[i], bj=B[j];
+    const earlyOnJ = bj.pax.filter(movable).filter(e=>entryRank(e)>=3) // 2nd/1st
+      .sort((a,b)=>entryRank(b)-entryRank(a) || (a.row.timeMins??1e9)-(b.row.timeMins??1e9));
+    const donorsOnI = bi.pax.filter(movable) // prefer later donors but allow any if needed
+      .sort((a,b)=>entryRank(a)-entryRank(b) || (b.row.timeMins??-1)-(a.row.timeMins??-1));
+    for(const eEarly of earlyOnJ){
+      if(i===0 && !eligibleForBoat(eEarly.row,0,false)) continue; // Boat 1 guard for inbound
+      const need = eEarly.count - (eff(bi)-bi.count);
+      if(need<=0){
+        // enough space already
+        removeEntryFromBoat(j,eEarly); addEntryToBoat(i,eEarly,'MULTI: direct pull earlier');
+        return true;
+      }
+      // choose donors
+      const subset = chooseDonorSubset(donorsOnI, need);
+      if(!subset) continue;
+      // Can each donor land on some boat ≥ j ?
+      // (Keep Fly donors on Fly boats)
+      if(placeDonorsLater(subset, i)){
+        removeEntryFromBoat(j,eEarly); addEntryToBoat(i,eEarly,'MULTI: pulled earlier after freeing space');
+        return true;
+      }
+      // else try next eEarly
     }
     return false;
   }
 
+  // Pairwise optimization loop with multi-swap first, then classic swap/push/pull, then Boat 1 evac
   let changed=true, passes=0;
   while(changed && passes<80){
     changed=false; passes++;
 
-    // 7.a Pairwise global swaps (i<j), prefer big improvements first
+    // 7.a Multi-booking swaps for all pairs (i < j)
+    outerMS:
+    for(let i=0;i<B.length;i++){
+      for(let j=i+1;j<B.length;j++){
+        if(tryMultiSwap(i,j)){ changed=true; break outerMS; }
+      }
+    }
+    if(changed) continue;
+
+    // 7.b Classic global swaps (one-for-one)
+    outerSwap:
     for(let i=0;i<B.length;i++){
       for(let j=i+1;j<B.length;j++){
         const bi=B[i], bj=B[j];
-        // Late on earlier boat (i)
-        const lateI = bi.pax.filter(movable).filter(e=>entryRank(e)<=2 /* 0/1/2 for Unknown/4th/3rd */)
+        const lateI = bi.pax.filter(movable).filter(e=>entryRank(e)<=2)
           .sort((a,b)=>entryRank(a)-entryRank(b) || (b.row.timeMins??-1)-(a.row.timeMins??-1));
-        // Early on later boat (j)
-        const earlyJ = bj.pax.filter(movable).filter(e=>entryRank(e)>=3 /* 3/4 for 2nd/1st */)
+        const earlyJ = bj.pax.filter(movable).filter(e=>entryRank(e)>=3)
           .sort((a,b)=>entryRank(b)-entryRank(a) || (a.row.timeMins??1e9)-(b.row.timeMins??1e9));
-        outer:
         for(const eLate of lateI){
           for(const eEarly of earlyJ){
             if(!earlierThan(eEarly,eLate)) continue;
-            // capacity with swap
             if( (bi.count - eLate.count + eEarly.count) <= eff(bi) &&
                 (bj.count - eEarly.count + eLate.count) <= eff(bj) ){
-              // Boat 1 guard for eEarly going into 0
               if(i===0 && !eligibleForBoat(eEarly.row,0,false)) continue;
-              // tag compatibility for destinations
               if(!canLand(eLate, j)) continue;
-              // eEarly → i must respect tags for boat i
-              const tempEntryForI = {row:eEarly.row,count:eEarly.count,tags:eEarly.tags,highlights:eEarly.highlights};
-              if(i===0 && (eLate.row.section==='3rd'||eLate.row.section==='4th'||eLate.row.section==='Unknown')){} // allowed because leaving 0
-              // Check tags for i
-              if(tempEntryForI.tags.has('DDI') && !B[i].tagDDI) continue;
-              if(tempEntryForI.tags.has('F+R') && !B[i].tagFly) continue;
-
-              // Apply swap
+              const tempForI = {row:eEarly.row,count:eEarly.count,tags:eEarly.tags,highlights:eEarly.highlights};
+              if(tempForI.tags.has('DDI') && !B[i].tagDDI) continue;
+              if(tempForI.tags.has('F+R') && !B[i].tagFly) continue;
               removeEntryFromBoat(i,eLate); removeEntryFromBoat(j,eEarly);
               addEntryToBoat(i, eEarly, 'GLOBAL SWAP: earlier pulled earlier');
               addEntryToBoat(j, eLate, 'GLOBAL SWAP: later pushed later');
-              changed=true;
-              break outer;
+              changed=true; break outerSwap;
             }
           }
         }
-        if(changed) break;
       }
-      if(changed) break;
     }
     if(changed) continue;
 
-    // 7.b One-way pushes from earlier → later (any distance)
+    // 7.c Push late forward (cascade light)
+    outerPush:
     for(let i=0;i<B.length-1;i++){
       const bi=B[i];
-      const candidates = bi.pax.filter(movable).filter(e=>entryRank(e)<=2) // later sections on earlier boats
+      const candidates = bi.pax.filter(movable).filter(e=>entryRank(e)<=2)
         .sort((a,b)=>entryRank(a)-entryRank(b) || (b.row.timeMins??-1)-(a.row.timeMins??-1));
       for(const e of candidates){
-        if(tryCascadePlace(e, i, 'GLOBAL: pushed later')){ changed=true; break; }
+        for(let j=B.length-1;j>i;j--){
+          if(canLand(e,j)){
+            removeEntryFromBoat(i,e); addEntryToBoat(j,e,'GLOBAL: pushed later');
+            changed=true; break outerPush;
+          }
+        }
       }
-      if(changed) break;
     }
     if(changed) continue;
 
-    // 7.c Pull ups: if later boat has earlier sections and there is room in earlier boat
+    // 7.d Pull early backward (toward earlier boats) where there is room
+    outerPull:
     for(let i=0;i<B.length-1;i++){
-      const bi=B[i], room = eff(bi)-bi.count;
+      const room = eff(B[i]) - B[i].count;
       if(room<=0) continue;
       const pullers=[];
       for(let j=i+1;j<B.length;j++){
         const early = B[j].pax.filter(movable).filter(e=>entryRank(e)>=3);
-        for(const e of early){ pullers.push({j,e}); }
+        for(const e of early) pullers.push({j,e});
       }
       pullers.sort((A,B2)=>{
         const a=A.e, b=B2.e;
@@ -807,30 +931,63 @@ function allocate(){
       });
       for(const {j,e} of pullers){
         if(i===0 && !eligibleForBoat(e.row,0,false)) continue;
-        const cnt=e.count;
-        if(bi.count + cnt <= eff(bi)){
-          // tags for i
-          if(e.tags.has('DDI') && !B[i].tagDDI) continue;
-          if(e.tags.has('F+R') && !B[i].tagFly) continue;
+        if(e.tags.has('DDI') && !B[i].tagDDI) continue;
+        if(e.tags.has('F+R') && !B[i].tagFly) continue;
+        if(B[i].count + e.count <= eff(B[i])){
           removeEntryFromBoat(j,e); addEntryToBoat(i,e,'GLOBAL: pulled earlier');
-          changed=true; break;
+          changed=true; break outerPull;
         }
       }
-      if(changed) break;
     }
     if(changed) continue;
 
-    // 7.d HARD EVAC of Boat 1 late pax via cascades (strongest rule)
+    // 7.e HARD EVAC Boat 1 (multi-set if needed)
     const b0=B[0];
     const lateOnB0 = b0.pax.filter(movable).filter(e=>{
       const s=e.row.section; return s==='3rd'||s==='4th'||s==='Unknown';
     }).sort((a,b)=>entryRank(a)-entryRank(b) || (b.row.timeMins??-1)-(a.row.timeMins??-1));
+    // Try single moves first
+    let evacuated=false;
     for(const e of lateOnB0){
-      if(tryCascadePlace(e, 0, 'EVAC from Boat 1')){ changed=true; break; }
+      for(let j=B.length-1;j>=1;j--){
+        if(canLand(e,j)){
+          removeEntryFromBoat(0,e); addEntryToBoat(j,e,'EVAC: moved off Boat 1');
+          changed=true; evacuated=true; break;
+        }
+      }
+      if(evacuated) break;
+    }
+    if(changed) continue;
+
+    // Try multi-donor freespace from Boat 1 into Boat 1+1 to send late out
+    if(lateOnB0.length){
+      // Choose a later boat j where the late entry could land if we free space on j by pushing its own donors further back
+      outerEvac:
+      for(const e of lateOnB0){
+        for(let j=1;j<B.length;j++){
+          if(!canLand(e,j)){
+            // Try to free seats on j by pushing its donors out
+            const donors = B[j].pax.filter(movable).sort((a,b)=>entryRank(a)-entryRank(b));
+            const need = e.count - (eff(B[j]) - B[j].count);
+            if(need<=0){
+              removeEntryFromBoat(0,e); addEntryToBoat(j,e,'EVAC: to boat '+(j+1));
+              changed=true; break outerEvac;
+            }
+            const subset = chooseDonorSubset(donors, need);
+            if(subset && placeDonorsLater(subset, j)){
+              removeEntryFromBoat(0,e); addEntryToBoat(j,e,'EVAC: after freeing space');
+              changed=true; break outerEvac;
+            }
+          }else{
+            removeEntryFromBoat(0,e); addEntryToBoat(j,e,'EVAC: direct');
+            changed=true; break outerEvac;
+          }
+        }
+      }
     }
   }
 
-  // If anything still stuck on Boat 1 from 3rd/4th/Unknown, mark clearly
+  // Mark any unavoidable late entries left on Boat 1
   B[0].pax.forEach(p=>{
     const s=p.row.section;
     if(s==='3rd'||s==='4th'||s==='Unknown'){
@@ -912,7 +1069,7 @@ function allocate(){
 
   const summary=document.createElement('div'); summary.className='status';
   summary.style.margin='10px 0 0';
-  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}<span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · global+cascade optimizer</span>`;
+  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}<span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · multi-swap + edge-in optimizer</span>`;
   results.prepend(summary);
 
   // CSV Download
@@ -990,7 +1147,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus(`Ready. (v=${APP_VERSION} · global+cascade optimizer active)`);
+    setStatus(`Ready. (v=${APP_VERSION} · multi-swap + edge-in optimizer active)`);
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
