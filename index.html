@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Ocean Rafting — Boat Split</title>
 
-<!-- Built-in cache buster: bump APP_VERSION when you update -->
+<!-- Built-in cache buster -->
 <script>
-  const APP_VERSION = '2025-09-10-8'; // ← bump this when you update
+  const APP_VERSION = '2025-09-10-10'; // ← bump this to invalidate cached JS
   (function () {
     try {
       const url = new URL(location.href);
@@ -49,7 +49,7 @@
        border:1px solid var(--line);background:#fff;color:#111827;cursor:pointer;text-decoration:none}
   .btn:hover{background:#f3f4f6}
   .btn-primary{background:var(--brand);border-color:var(--brand);color:#fff}
-  .btn-primary:hover{background:#brand-600}
+  .btn-primary:hover{background:var(--brand-600)}
   .btn-danger{background:#fff;border-color:#fca5a5;color:#b91c1c}
   .btn-danger:hover{background:#fee2e2}
   .btn[disabled]{opacity:.55;cursor:not-allowed}
@@ -142,15 +142,15 @@ window.onerror = (msg, src, line, col, err) => {
 const el = id => document.getElementById(id);
 const setStatus = s => { const n=el('status'); if(n) n.textContent = s; };
 const messagesEl = document.getElementById('messages');
-const pushMsg=(text,tone='')=>{
+function clearMsgs(){ if(messagesEl) messagesEl.innerHTML=''; }
+function pushMsg(text,tone=''){
   if(!messagesEl) return;
   const m=document.createElement('span'); m.className='chip';
   const col = tone==='ok'?'#16a34a':tone==='warn'?'#f59e0b':tone==='bad'?'#ef4444':'#c7d2fe';
   m.style.borderColor=col; m.textContent=text; messagesEl.appendChild(m);
-};
-const clearMsgs=()=>{ if(messagesEl) messagesEl.innerHTML=''; };
-const norm = s => (s??'').toString().trim();
-const escapeHtml = s => (s??'').replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
+}
+const norm=s=>(s??'').toString().trim();
+const escapeHtml=s=>(s??'').replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
 const rowIsBlank = row => !row || !row.length || row.every(c => norm(c)==='');
 
 /* ========= Defaults ========= */
@@ -313,9 +313,29 @@ function allocate(){
   }));
   const eff = b => Math.max(0,b.seats-b.hold);
 
-  let usedUnknownBottomUp=false, usedEarly=false, usedOwnWayLatest=false;
+  /* ---- section helpers ---- */
+  const distinct=[...new Set(rows.map(r=>r.timeMins).filter(v=>v!=null))].sort((a,b)=>a-b);
+  rows.forEach(r=>r.section = quartileSection(r.timeMins, distinct));
+  const sectionRank=s=>({'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 0);
 
-  /* ---- Proximity helpers ---- */
+  /* ---- classifiers ---- */
+  const isDDI   = r => /daydream\s*island/i.test(r.pu);
+  const isEE    = r => /\bee\b/i.test(r.notes||'');
+  const noteFly = r => /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||'');
+  const hasFR   = r => /\(\s*F\s*\+\s*R\s*\)/i.test(r.clientRaw) || r.flyFromCount || noteFly(r);
+  const wantsEarly = r => /early\s*boat/i.test(r.notes||'');
+  const charter = r => /charter/i.test(r.pu);
+  const wHoldName = r => /\bweather\s*hold\b/i.test(r.clientRaw);
+  const isOwnWay = r => /(own\s*way|tba|tbc|not\s*[-\s]*sure|unsure|unknown)/i.test(r.pu||'') ||
+                        /(own\s*way|tba|tbc|not\s*[-\s]*sure|unsure|unknown)/i.test(r.notes||'');
+
+  /* ---- inputs filter ---- */
+  const prepared = rows.slice();
+  ignoredCharter = prepared.filter(r=>charter(r));
+  const filtered = prepared.filter(r=>!wHoldName(r) && !charter(r));
+  const unassigned = new Set(filtered);
+
+  /* ---- boat index helpers ---- */
   function sectionTargetIndex(section, n){
     if(section==='1st') return 0;
     if(section==='2nd') return Math.round((n-1)/3);
@@ -332,110 +352,24 @@ function allocate(){
   }
   function indicesBySection(section){
     const n=B.length;
-    if(section==='Unknown') return [...Array(n).keys()].reverse();
+    if(section==='Unknown') return [...Array(n).keys()].reverse(); // bottom-up
     const t=sectionTargetIndex(section,n);
     return proximityOrder(n,t);
   }
-  function sectionRank(s){ return {'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 0; }
 
-  // Boat 1 eligibility guard
-  function eligibleForBoat(row, idx, desperate){
-    if(idx!==0) return true;
-    if(/early\s*boat/i.test(row.notes||'')) return true;
-    const s=row.section;
-    if(s==='3rd' || s==='4th' || s==='Unknown') return !!desperate;
-    return true;
-  }
-
-  function addPax(i,r,tags=[],hl=[]){
+  /* ---- addPax with lock flag ---- */
+  function addPax(i,r,tags=[],hl=[],locked=false){
     const need=r.num||1; const b=B[i];
-    b.pax.push({row:r,count:need,tags:new Set(tags),highlights:new Set(hl)});
+    b.pax.push({row:r,count:need,tags:new Set(tags),highlights:new Set(hl),locked});
     b.count+=need;
-  }
-
-  /* ---- Local swap helper used in primary placement ---- */
-  function tryMakeRoomWithSwap(targetIdx, need, refSec, requireFly){
-    const target = B[targetIdx];
-    const refRank = sectionRank(refSec);
-    if(refRank <= 0) return false;
-    const laterIdx = [...Array(B.length).keys()].filter(i => i > targetIdx);
-    let freed = 0;
-    for(let k = target.pax.length - 1; k >= 0 && freed < need; k--){
-      const entry = target.pax[k];
-      const row = entry.row;
-      const cnt = entry.count;
-      const donorRank = sectionRank(row.section);
-      const donorIsDDI = entry.tags.has('DDI') || /daydream\s*island/i.test(row.pu);
-      const donorIsFR  = entry.tags.has('F+R') || row.flyFromCount || /(fly[-\s]*raft|fly\s*raft)/i.test(row.notes||'');
-      const donorIsTW  = Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped'));
-      if(donorRank >= refRank) continue;
-      if(donorIsDDI || donorIsTW) continue;
-      for(const j of laterIdx){
-        const land = B[j];
-        if(land.tagDDI) continue;
-        if(donorIsFR && !land.tagFly) continue;
-        if(land.count + cnt <= eff(land)){
-          target.pax.splice(k,1); target.count -= cnt;
-          addPax(j, row, [...entry.tags], [...entry.highlights, 'SWAP (freed earlier boat)']);
-          freed += cnt; break;
-        }
-      }
-    }
-    return freed >= need;
+    unassigned.delete(r);
   }
 
   const edges = (n)=>{ const res=[]; for(let a=0,b=n-1;a<=b;a++,b--){ res.push(a); if(b>a) res.push(b);} return res; };
   const edgeBoats = edges(B.length).map(i=>({i,b:B[i]}));
   const tagOrder = tag => edgeBoats.filter(o=>o.b[`tag${tag}`]).sort((a,b)=>a.i-b.i);
 
-  // Prepare sections
-  const distinct=[...new Set(rows.map(r=>r.timeMins).filter(v=>v!=null))].sort((a,b)=>a-b);
-  rows.forEach(r=>r.section = quartileSection(r.timeMins, distinct));
-
-  // classification
-  const isDDI   = r => /daydream\s*island/i.test(r.pu);
-  const isEE    = r => /\bee\b/i.test(r.notes||'');
-  const noteFly = r => /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||'');
-  const hasFR   = r => /\(\s*F\s*\+\s*R\s*\)/i.test(r.clientRaw) || r.flyFromCount || noteFly(r);
-  const wantsEarly = r => /early\s*boat/i.test(r.notes||'');
-  const charter = r => /charter/i.test(r.pu);
-  const wHoldName = r => /\bweather\s*hold\b/i.test(r.clientRaw);
-  const isOwnWay = r => /(own\s*way|tba|tbc|not\s*[-\s]*sure|unsure|unknown)/i.test(r.pu||'') ||
-                        /(own\s*way|tba|tbc|not\s*[-\s]*sure|unsure|unknown)/i.test(r.notes||'');
-
-  // rows: filter
-  const prepared = rows.slice();
-  ignoredCharter = prepared.filter(r=>charter(r));
-  const filtered = prepared.filter(r=>!wHoldName(r) && !charter(r));
-  const unassigned = new Set(filtered);
-
-  // *TW* parsing
-  function baseName(clientRaw){ return norm(clientRaw.replace(/\*TW\*.*$/i,'')); }
-  function parseTW(row){ const m = row.clientRaw.match(/\*TW\*\s*(.+)$/i); return m?norm(m[1]):null; }
-  const byName = new Map();
-  filtered.forEach(r=>{
-    r.nameClean = baseName(r.clientRaw);
-    r.twPartner = parseTW(r);
-    byName.set(r.nameClean, (byName.get(r.nameClean)||[]).concat([r]));
-  });
-  const twGroups = new Map(); const twErrors=[];
-  filtered.forEach(r=>{
-    if(!r.twPartner) return;
-    const anchor = norm(r.twPartner);
-    const partners = byName.get(anchor) || [];
-    if(partners.length===0){ twErrors.push(`*TW* reference not found: "${r.clientRaw}" → "${anchor}"`); return; }
-    if(partners.length>1){ twErrors.push(`*TW* ambiguous anchor: "${anchor}" — please disambiguate.`); return; }
-    const arr = twGroups.get(anchor)||[];
-    if(!arr.includes(partners[0])) arr.push(partners[0]);
-    if(!arr.includes(r)) arr.push(r);
-    twGroups.set(anchor, arr);
-  });
-  if(twErrors.length){ popups.push(twErrors.join('\n')); }
-
-  // Assumptions
-  filtered.forEach(r=>{ if(isDDI(r)) r.section='1st'; if(hasFR(r)) r.section='Unknown'; });
-
-  /* ===== 1) DDI STRICT ===== */
+  /* ====================== 1) DDI STRICT ====================== */
   let ddiBoats = tagOrder('DDI');
   const ddiRows = filtered.filter(isDDI);
   if(ddiRows.length && ddiBoats.length===0 && B.length){
@@ -447,17 +381,12 @@ function allocate(){
   for(const r of ddiRows){
     if(!unassigned.has(r)) continue; const need=r.num||1;
     for(const {i} of ddiBoats){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['DDI']); unassigned.delete(r); break; }
+      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['DDI'],[],true); break; }
     }
   }
 
-  /* ===== 2) F+R STRICT ===== */
-  const flyRows = filtered.filter(r=>hasFR(r) && !wantsEarly(r))
-    .sort((a,b)=>{
-      const rank = s => ({'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 5);
-      const ra=rank(a.section), rb=rank(b.section); if(ra!==rb) return ra-rb;
-      return (b.timeMins??-1)-(a.timeMins??-1);
-    });
+  /* ====================== 2) F+R STRICT ====================== */
+  const flyRows = filtered.filter(r=>hasFR(r));
   let flyBoats = tagOrder('Fly');
   if(flyRows.length && flyBoats.length===0){
     const last = B.length-1; B[last].tagFly=true; flyBoats=tagOrder('Fly');
@@ -468,544 +397,158 @@ function allocate(){
   if(flyNeed>flyCap) popups.push('Not enough space on Fly-Raft boat(s). Tag another Fly-Raft or redo run sheet.');
   for(const r of flyRows){
     if(!unassigned.has(r)) continue; const need=r.num||1; let placed=false;
-    for(const {i} of flyBoats.slice().reverse()){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['F+R']); unassigned.delete(r); placed=true; break; }
+    for(const {i} of flyBoats.slice().reverse()){ // latest fly first
+      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['F+R'],[],true); placed=true; break; }
+    }
+    if(!placed){
+      // keep as unassigned for repack (won't happen usually; Fly is strict)
     }
   }
 
-  /* ===== 3) *TW* groups ===== */
-  function sectionRefMember(arr){
-    const known = arr.filter(r=>r.section && r.section!=='Unknown');
-    if(!known.length) return null;
-    return known.sort((a,b)=>{
-      const ra=sectionRank(a.section), rb=sectionRank(b.section);
-      if(rb!==ra) return rb-ra;
-      return (b.timeMins??-1) - (a.timeMins??-1);
-    })[0];
-  }
-  function isFRRow(r){ return hasFR(r); }
-  function isDDIRow(r){ return isDDI(r); }
-
-  function tryPlaceGroupNearSection(group, requireFly){
-    const need = group.reduce((s,r)=>s+(r.num||1),0);
-    const ref = sectionRefMember(group);
-    const refSec = ref ? ref.section : 'Unknown';
-    const candidates = requireFly ? tagOrder('Fly').map(x=>x.i) : [...Array(B.length).keys()].filter(i=>!B[i].tagDDI);
-    const t = sectionTargetIndex(refSec, B.length);
-    const ordered = candidates.sort((a,b)=>{
-      const da=Math.abs(a-t), db=Math.abs(b-t);
-      return da-db || a-b;
-    });
-
-    const hardBlockBoat1 = (refSec==='3rd'||refSec==='4th'||refSec==='Unknown');
-    for(const i of ordered){
-      if(hardBlockBoat1 && i===0) continue;
-      const capLeft = eff(B[i]) - B[i].count;
-      if(capLeft >= need) return i;
-      if(tryMakeRoomWithSwap(i, need - capLeft, refSec, requireFly)) return i;
-    }
-    if(hardBlockBoat1){
-      const i=0;
-      const capLeft = eff(B[i]) - B[i].count;
-      if(capLeft >= need) return i;
-      if(tryMakeRoomWithSwap(i, need - capLeft, refSec, requireFly)) return i;
-      return null;
-    }
-    return null;
-  }
-
-  for(const [anchor, groupRaw] of twGroups){
-    const group = Array.from(new Set(groupRaw));
-    if(group.some(isDDIRow)){
-      popups.push(`*TW* group with "${anchor}" includes a DDI passenger. Consider changing PU times to keep them together.`);
-      continue;
-    }
-    const anyFR = group.some(isFRRow);
-    const idx = tryPlaceGroupNearSection(group, anyFR);
-    if(idx==null){
-      popups.push(`*TW* group "${anchor}" could not fit near section${anyFR?' (Fly-Raft)':''} even after swaps. Adjust tags/holds or numbers.`);
-    }else{
-      // remove prior placements for these rows (if any)
-      for(let bi=0; bi<B.length; bi++){
-        const p=B[bi].pax;
-        for(let k=p.length-1; k>=0; k--){
-          if(group.includes(p[k].row)){ const rem=B[bi].pax.splice(k,1)[0]; B[bi].count -= rem.count; }
-        }
-      }
-      for(const r of group){
-        const tags=[]; if(isFRRow(r)) tags.push('F+R'); if(isEE(r)) tags.push('EE'); if(isDDIRow(r)) tags.push('DDI');
-        addPax(idx, r, tags, ['*TW* grouped (anchored to partner’s section)']);
-        unassigned.delete(r);
-      }
-      B[idx].twGroups.add(anchor);
-    }
-  }
-
-  /* ===== 4) Early boat requests ===== */
-  function placeEarliest(r){
-    const need=r.num||1;
-    const tryOrders = [
-      [...Array(B.length).keys()].filter(i=>!B[i].tagDDI),
-      [...Array(B.length).keys()]
-    ];
-    for(const order of tryOrders){
-      for(const i of order){
-        const capLeft = eff(B[i]) - B[i].count;
-        if(capLeft >= need){ addPax(i,r,['Early boat']); usedEarly=true; return true; }
-        if(tryMakeRoomWithSwap(i, need - capLeft, '1st', false)){
-          addPax(i,r,['Early boat'],['Local swap to get earliest boat']); usedEarly=true; return true;
-        }
-      }
-    }
-    return false;
-  }
-  for(const r of filtered.filter(rr=>wantsEarly(rr) && unassigned.has(rr))){
-    if(placeEarliest(r)) unassigned.delete(r);
-  }
-
-  /* ===== 4.5) "Own way / TBA / Not sure" → latest ===== */
-  function placeLatest(r, tagList=[], highlightNote=''){
-    const need=r.num||1;
-    const orders = [
-      [...Array(B.length).keys()].filter(i=>!B[i].tagDDI).reverse(),
-      [...Array(B.length).keys()].reverse()
-    ];
-    for(const order of orders){
-      for(const i of order){
-        const capLeft = eff(B[i]) - B[i].count;
-        if(capLeft >= need){ addPax(i,r,tagList,highlightNote?[highlightNote]:[]); usedOwnWayLatest=true; return true; }
-        if(tryMakeRoomWithSwap(i, need - capLeft, '4th', false)){
-          addPax(i,r,tagList,['Local swap to push later'].concat(highlightNote?[highlightNote]:[])); usedOwnWayLatest=true; return true;
-        }
-      }
-    }
-    return false;
-  }
-  for(const r of filtered.filter(rr=>isOwnWay(rr) && unassigned.has(rr))){
-    if(placeLatest(r,['Own way → latest'])) unassigned.delete(r);
-  }
-
-  /* ===== 5) EE handling ===== */
-  const eeBoatIdx = tagOrder('EE').map(x=>x.i);
-
-  function placeNearSection(r, tagList=[], highlightNote=''){
-    const need=r.num||1;
-    const ordered = indicesBySection(r.section);
-
-    // Prefer near section; avoid Boat 1 for 3rd/4th/Unknown
-    for(const i of ordered){
-      if(!eligibleForBoat(r,i,false)) continue;
-      const capLeft = eff(B[i]) - B[i].count;
-      if(capLeft >= need){
-        addPax(i,r,tagList,highlightNote?[highlightNote]:[]);
-        if(r.section==='Unknown') usedUnknownBottomUp=true;
-        return true;
-      }
-      if(tryMakeRoomWithSwap(i, need - capLeft, r.section, false)){
-        addPax(i,r,tagList, ['Local swap to keep near section'].concat(highlightNote?[highlightNote]:[]));
-        if(r.section==='Unknown') usedUnknownBottomUp=true;
-        return true;
-      }
-    }
-    // Secondary fallback: still avoid Boat 1 for 3rd/4th/Unknown
-    if(r.section==='Unknown'){
-      for(let i=B.length-1;i>=1;i--){
-        if(B[i].count + need <= eff(B[i])){ addPax(i,r,tagList, ['Capacity fallback (bottom-up)'].concat(highlightNote?[highlightNote]:[])); usedUnknownBottomUp=true; return true; }
-      }
-    }else{
-      for(let i=1;i<B.length;i++){
-        if(B[i].count + need <= eff(B[i])){ addPax(i,r,tagList, ['Capacity fallback'].concat(highlightNote?[highlightNote]:[])); return true; }
-      }
-    }
-    // Final fallback: only Boat 1 if no seat anywhere else
-    for(let i=1;i<B.length;i++){
-      if(eff(B[i]) - B[i].count >= need) return false; // seat exists elsewhere
-    }
-    if(B[0].count + need <= eff(B[0])){ addPax(0,r,tagList,['Desperate fallback (no seats anywhere)'].concat(highlightNote?[highlightNote]:[])); return true; }
-    return false;
-  }
-
-  for(const r of filtered.filter(rr=>isEE(rr) && unassigned.has(rr))){
-    const isFirstSection = r.section==='1st';
-    if(isFirstSection){
-      if(placeNearSection(r,['EE','Ignored EE (1st section)'])){ unassigned.delete(r); }
-      continue;
-    }
-    if(eeBoatIdx.length){
-      const t=sectionTargetIndex(r.section,B.length);
-      const orderedEE = eeBoatIdx.slice().sort((a,b)=>{
-        const da=Math.abs(a-t), db=Math.abs(b-t);
-        return da-db || a-b;
-      });
-      let placed=false;
-      for(const i of orderedEE){
-        if(!eligibleForBoat(r,i,false)) continue;
-        const capLeft = eff(B[i]) - B[i].count;
-        if(capLeft >= (r.num||1)){ addPax(i,r,['EE']); unassigned.delete(r); placed=true; break; }
-        if(tryMakeRoomWithSwap(i, (r.num||1) - capLeft, r.section, false)){
-          addPax(i,r,['EE'],['EE via local swap']); unassigned.delete(r); placed=true; break;
-        }
-      }
-      if(placed) continue;
-    }
-    if(placeNearSection(r,['EE','Ignored EE (capacity)'])){ unassigned.delete(r); }
-  }
-
-  /* ===== 6) Baseline fill ===== */
-  const orderSec={'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4};
-  [...unassigned].sort((a,b)=>{
-    const da=orderSec[a.section]??4, db=orderSec[b.section]??4;
-    if(da!==db) return da-db;
-    return (a.timeMins??1e9)-(b.timeMins??1e9);
-  }).forEach(r=>{
-    if(unassigned.has(r) && placeNearSection(r)){ unassigned.delete(r); }
+  /* ====================== 3) *TW* GROUPS (lock together) ====================== */
+  function baseName(clientRaw){ return norm(clientRaw.replace(/\*TW\*.*$/i,'')); }
+  function parseTW(row){ const m = row.clientRaw.match(/\*TW\*\s*(.+)$/i); return m?norm(m[1]):null; }
+  const byName = new Map();
+  filtered.forEach(r=>{ r.nameClean=baseName(r.clientRaw); r.twPartner=parseTW(r); byName.set(r.nameClean,(byName.get(r.nameClean)||[]).concat([r])); });
+  const twGroups = new Map(); const twErrors=[];
+  filtered.forEach(r=>{
+    if(!r.twPartner) return;
+    const anchor=norm(r.twPartner); const partners=byName.get(anchor)||[];
+    if(partners.length===0){ twErrors.push(`*TW* reference not found: "${r.clientRaw}" → "${anchor}"`); return; }
+    if(partners.length>1){ twErrors.push(`*TW* ambiguous anchor: "${anchor}" — please disambiguate.`); return; }
+    const arr=twGroups.get(anchor)||[]; if(!arr.includes(partners[0])) arr.push(partners[0]); if(!arr.includes(r)) arr.push(r); twGroups.set(anchor,arr);
   });
+  if(twErrors.length){ popups.push(twErrors.join('\n')); }
 
-  /* ===== 6.5) Edge-in repacker (outer → inner) ===== */
-  function tryPushLaterFrom(i){
-    const bi=B[i];
-    const candidates = bi.pax
-      .filter(e=>!Array.from(e.highlights||[]).some(h=>h.includes('*TW* grouped')))
-      .filter(e=>!e.tags.has('DDI'))
-      .filter(e=>{
-        const s=e.row.section; return (i===0)?(s==='3rd'||s==='4th'||s==='Unknown'):true;
-      })
-      .sort((a,b)=>{
-        const ra=sectionRank(a.row.section), rb=sectionRank(b.row.section);
-        if(ra!==rb) return ra-rb; // later first
-        const ta=a.row.timeMins??-1, tb=b.row.timeMins??-1;
-        return tb-ta; // later time first
-      });
-    for(const e of candidates){
-      for(let j=B.length-1;j>i;j--){
-        if(e.tags.has('F+R') && !B[j].tagFly) continue;
-        if(B[j].count + e.count <= eff(B[j])){
-          // move
-          bi.pax.splice(bi.pax.indexOf(e),1); bi.count -= e.count;
-          addPax(j, e.row, [...e.tags], [...e.highlights,'EDGE-IN: pushed later']);
+  function placeTWGroup(group){
+    const need=group.reduce((s,r)=>s+(r.num||1),0);
+    // reference by "earlier" member (1st/2nd has priority)
+    const known = group.filter(r=>r.section && r.section!=='Unknown')
+      .sort((a,b)=>sectionRank(b.section)-sectionRank(a.section) || (a.timeMins??1e9)-(b.timeMins??1e9));
+    const ref = known[0] || group[0];
+    const refSec = ref.section || 'Unknown';
+    const candidates = [...Array(B.length).keys()].filter(i=>!B[i].tagDDI);
+    const t=sectionTargetIndex(refSec,B.length);
+    const order=candidates.sort((a,b)=>Math.abs(a-t)-Math.abs(b-t) || a-b);
+    for(const i of order){
+      if(i===0 && (refSec==='3rd'||refSec==='4th'||refSec==='Unknown')) continue; // don't drop a late TW on boat 1
+      if(B[i].count + need <= eff(B[i])){
+        for(const r of group) addPax(i,r,[],['*TW* grouped'],true);
+        return true;
+      }
+    }
+    return false;
+  }
+  for(const [,group] of twGroups){ if(group.some(isDDI)) { popups.push(`*TW* group with "${group[0].nameClean}" includes a DDI passenger — PU/boat tags may force separation.`); } else { placeTWGroup(Array.from(new Set(group))); } }
+
+  /* ====================== 4) EE pre-allocation ====================== */
+  const eeBoatIdx = tagOrder('EE').map(x=>x.i);
+  for(const r of filtered.filter(rr=>isEE(rr) && unassigned.has(rr))){
+    if(r.section==='1st'){ continue; } // ignore EE for 1st section so they don't wait
+    if(!eeBoatIdx.length) continue;
+    // drop on closest EE boat to their section
+    const t=sectionTargetIndex(r.section,B.length);
+    const order=eeBoatIdx.slice().sort((a,b)=>Math.abs(a-t)-Math.abs(b-t) || a-b);
+    for(const i of order){ if(B[i].count + (r.num||1) <= eff(B[i])){ addPax(i,r,['EE'],['EE preferred'],true); break; } }
+  }
+
+  /* ====================== 5) EDGE-TO-CENTER REPACK ====================== */
+  // 5a. Pull out all *non-locked* entries and add any still-unassigned rows → pool
+  const pool=[];
+  for(let i=0;i<B.length;i++){
+    const keep=[]; const moving=[];
+    for(const e of B[i].pax){ if(e.locked) keep.push(e); else moving.push(e); }
+    if(moving.length){
+      B[i].pax = keep; B[i].count = keep.reduce((s,e)=>s+e.count,0);
+      for(const e of moving){ pool.push({row:e.row,tags:[...e.tags],hl:[...e.highlights]}); }
+    }
+  }
+  for(const r of Array.from(unassigned)){ pool.push({row:r,tags:[],hl:[]}); }
+
+  // 5b. Build early/late queues (both-sides fill)
+  function isLateRow(r){ return isOwnWay(r) || r.section==='4th' || r.section==='3rd' || r.section==='Unknown'; }
+  const earlyQ = pool.filter(p=>!isLateRow(p.row))
+                     .sort((a,b)=>{
+                        // priority: explicit Early, then section rank (1st>2nd), then time asc
+                        const ae=wantsEarly(a.row)?1:0, be=wantsEarly(b.row)?1:0;
+                        if(ae!==be) return be-ae;
+                        const ra=sectionRank(a.row.section), rb=sectionRank(b.row.section);
+                        if(ra!==rb) return rb-ra;
+                        return (a.row.timeMins??1e9)-(b.row.timeMins??1e9);
+                      });
+  const lateQ  = pool.filter(p=>isLateRow(p.row))
+                     .sort((a,b)=>{
+                        // priority: Unknown/4th/3rd first, later time first
+                        const ra=sectionRank(a.row.section), rb=sectionRank(b.row.section);
+                        if(ra!==rb) return ra-rb; // later sections first
+                        const ta=a.row.timeMins??-1, tb=b.row.timeMins??-1; return tb-ta;
+                      });
+
+  // 5c. Placement helpers for repack
+  function tryPlaceToClosest(r, preferLate){
+    const need=r.num||1;
+    // EE hint (soft): if row has EE tag but wasn't locked, prefer EE boats nearest section
+    const prefersEE = isEE(r) && eeBoatIdx.length>0 && r.section!=='1st';
+    const baseOrder = indicesBySection(r.section);
+    const order = preferLate
+      ? baseOrder.slice().reverse() // later-first near their section
+      : baseOrder;
+
+    // search orders: EE boats (if hint) then general (non-DDI)
+    const tries = [];
+    if(prefersEE) tries.push(eeBoatIdx.slice().sort((a,b)=>Math.abs(a-sectionTargetIndex(r.section,B.length))-Math.abs(b-sectionTargetIndex(r.section,B.length)) || a-b));
+    tries.push(order.filter(i=>!B[i].tagDDI));
+    for(const arr of tries){
+      for(const i of arr){
+        if(i===0 && (r.section==='3rd'||r.section==='4th'||r.section==='Unknown')) continue; // avoid boat 1 for late sections
+        if(B[i].count + need <= eff(B[i])){
+          const tags=[]; if(isEE(r)) tags.push('EE');
+          if(isOwnWay(r)) tags.push('Own way → latest');
+          const hl = preferLate ? ['Repacked (late → later)'] : ['Repacked (early → earlier)'];
+          addPax(i,r,tags,hl,false);
           return true;
         }
       }
     }
-    return false;
-  }
-  let changedEdge=true, edgePass=0;
-  while(changedEdge && edgePass<10){
-    changedEdge=false; edgePass++;
-    // left edge
-    if(tryPushLaterFrom(0)) changedEdge=true;
-    // right edge
-    const last=B.length-1;
-    const bj=B[last];
-    const pullers = [];
-    for(let j=last-1;j>=0;j--){
-      B[j].pax.forEach(e=>{
-        const sr=sectionRank(e.row.section);
-        if(sr>=3) pullers.push({j,e}); // earlier sections
-      });
-    }
-    pullers.sort((A,B2)=>{
-      const a=A.e, b=B2.e;
-      return (sectionRank(b.row.section)-sectionRank(a.row.section)) || ((a.row.timeMins??1e9)-(b.row.timeMins??1e9));
-    });
-    for(const {j,e} of pullers){
-      if(B[j+1].count + e.count <= eff(B[j+1])){
-        B[j].pax.splice(B[j].pax.indexOf(e),1); B[j].count -= e.count;
-        addPax(j+1, e.row, [...e.tags], [...e.highlights,'EDGE-IN: pulled outward']);
-        changedEdge=true; break;
-      }
-    }
-  }
-
-  /* ===== 7) GLOBAL OPTIMIZER with multi-booking freespace ===== */
-
-  function isTWGrouped(entry){
-    return Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped'));
-  }
-  function entryRank(e){ return sectionRank(e.row.section); }
-  function earlierThan(a,b){
-    const ra=entryRank(a), rb=entryRank(b);
-    if(ra!==rb) return ra>rb; // higher rank = earlier section
-    const ta = a.row.timeMins ?? 1e9;
-    const tb = b.row.timeMins ?? 1e9;
-    return ta < tb; // earlier time
-  }
-  function canLand(entry, destIdx){
-    const dest=B[destIdx];
-    const cnt=entry.count;
-    if(destIdx===0){
-      const s=entry.row.section;
-      if(s==='3rd'||s==='4th'||s==='Unknown') return false; // Boat 1 guard
-    }
-    if(entry.tags.has('DDI') && !dest.tagDDI) return false;
-    if(entry.tags.has('F+R') && !dest.tagFly) return false;
-    if(dest.count + cnt > eff(dest)) return false;
-    return true;
-  }
-  function movable(entry){
-    if(isTWGrouped(entry)) return false;
-    if(entry.tags.has('DDI')) return false;
-    return true;
-  }
-  function removeEntryFromBoat(idx, entry){
-    const arr=B[idx].pax; const k=arr.indexOf(entry);
-    if(k>=0){ arr.splice(k,1); B[idx].count -= entry.count; }
-  }
-  function addEntryToBoat(idx, entry, note){
-    const tags=[...entry.tags];
-    const highs=[...entry.highlights, note].filter(Boolean);
-    B[idx].pax.push({row:entry.row,count:entry.count,tags:new Set(tags),highlights:new Set(highs)});
-    B[idx].count += entry.count;
-  }
-
-  // Subset DP: choose donors whose total >= target with minimal overage, preferring later sections
-  function chooseDonorSubset(entries, target){
-    const LIMIT = Math.min(target+12, 64); // allow some overage, keep DP small
-    const n = entries.length;
-    // dp[s] = {sum:s, idxs:[...], prefScore}
-    // prefScore: higher is better; later sections get higher weight; larger counts slightly preferred
-    const wSec = e => {
-      const r = entryRank(e); // 0..4
-      // later sections (0/1/2) get bigger boost
-      return (2 - Math.min(r,2)) * 100 + (e.count); // Unknown/4th/3rd > 2nd > 1st
-    };
-    const dp = Array(LIMIT+1).fill(null);
-    dp[0] = {sum:0, idxs:[], pref:0};
-    for(let i=0;i<n;i++){
-      const w = entries[i].count;
-      const gain = wSec(entries[i]);
-      for(let s=LIMIT-w; s>=0; s--){
-        if(!dp[s]) continue;
-        const cand = {sum:s+w, idxs:dp[s].idxs.concat([i]), pref:dp[s].pref + gain};
-        const cur = dp[s+w];
-        if(!cur) dp[s+w]=cand;
-        else{
-          // prefer more pref; tie-break by smaller sum
-          if(cand.pref>cur.pref || (cand.pref===cur.pref && cand.sum<cur.sum)) dp[s+w]=cand;
-        }
-      }
-    }
-    let best=null;
-    for(let s=target; s<=LIMIT; s++){
-      if(!dp[s]) continue;
-      if(!best) best=dp[s];
-      else{
-        const overA = best.sum - target, overB = s - target;
-        if(overB < overA) best=dp[s];
-        else if(overB===overA && dp[s].pref>best.pref) best=dp[s];
-      }
-    }
-    if(!best) return null;
-    return best.idxs.map(k=>entries[k]);
-  }
-
-  // Place a list of donors to later boats (>= startIdx+1), latest-first; rollback if any fail.
-  function placeDonorsLater(donors, startIdx){
-    const moves=[];
-    for(const d of donors){
-      let landed=false;
-      for(let j=B.length-1;j>=startIdx+1;j--){
-        if(canLand(d,j)){ // capacity+tags
-          moves.push({from:null, to:j, entry:d});
-          landed=true;
-          break;
-        }
-      }
-      if(!landed){
-        // rollback
-        for(const m of moves){
-          // no-op because we didn't actually apply yet
-        }
-        return false;
-      }
-    }
-    // Apply: remove donors from start boat, then add into targets
-    for(const d of donors){ removeEntryFromBoat(startIdx,d); }
-    for(const m of moves){ addEntryToBoat(m.to, m.entry, 'MULTI: donor pushed later'); }
-    return true;
-  }
-
-  // Try multi-booking swap: pull early from j → i by freeing space on i via subset of donors on i
-  function tryMultiSwap(i,j){
-    const bi=B[i], bj=B[j];
-    const earlyOnJ = bj.pax.filter(movable).filter(e=>entryRank(e)>=3) // 2nd/1st
-      .sort((a,b)=>entryRank(b)-entryRank(a) || (a.row.timeMins??1e9)-(b.row.timeMins??1e9));
-    const donorsOnI = bi.pax.filter(movable) // prefer later donors but allow any if needed
-      .sort((a,b)=>entryRank(a)-entryRank(b) || (b.row.timeMins??-1)-(a.row.timeMins??-1));
-    for(const eEarly of earlyOnJ){
-      if(i===0 && !eligibleForBoat(eEarly.row,0,false)) continue; // Boat 1 guard for inbound
-      const need = eEarly.count - (eff(bi)-bi.count);
-      if(need<=0){
-        // enough space already
-        removeEntryFromBoat(j,eEarly); addEntryToBoat(i,eEarly,'MULTI: direct pull earlier');
-        return true;
-      }
-      // choose donors
-      const subset = chooseDonorSubset(donorsOnI, need);
-      if(!subset) continue;
-      // Can each donor land on some boat ≥ j ?
-      // (Keep Fly donors on Fly boats)
-      if(placeDonorsLater(subset, i)){
-        removeEntryFromBoat(j,eEarly); addEntryToBoat(i,eEarly,'MULTI: pulled earlier after freeing space');
-        return true;
-      }
-      // else try next eEarly
-    }
+    // fallback: if nowhere else, allow boat 1 as absolute last resort
+    for(let i=1;i<B.length;i++){ if(B[i].count + need <= eff(B[i])) return false; }
+    if(B[0].count + need <= eff(B[0])){ addPax(0,r,[],['Desperate fallback after repack'],false); return true; }
     return false;
   }
 
-  // Pairwise optimization loop with multi-swap first, then classic swap/push/pull, then Boat 1 evac
-  let changed=true, passes=0;
-  while(changed && passes<80){
-    changed=false; passes++;
-
-    // 7.a Multi-booking swaps for all pairs (i < j)
-    outerMS:
-    for(let i=0;i<B.length;i++){
-      for(let j=i+1;j<B.length;j++){
-        if(tryMultiSwap(i,j)){ changed=true; break outerMS; }
-      }
+  // 5d. Fill from both ends: early, late, early, late…
+  let step=0;
+  while(earlyQ.length || lateQ.length){
+    if(step%2===0 && earlyQ.length){
+      const p=earlyQ.shift(); tryPlaceToClosest(p.row,false);
+    }else if(lateQ.length){
+      const p=lateQ.shift(); tryPlaceToClosest(p.row,true);
     }
-    if(changed) continue;
+    step++;
+  }
 
-    // 7.b Classic global swaps (one-for-one)
-    outerSwap:
-    for(let i=0;i<B.length;i++){
-      for(let j=i+1;j<B.length;j++){
-        const bi=B[i], bj=B[j];
-        const lateI = bi.pax.filter(movable).filter(e=>entryRank(e)<=2)
-          .sort((a,b)=>entryRank(a)-entryRank(b) || (b.row.timeMins??-1)-(a.row.timeMins??-1));
-        const earlyJ = bj.pax.filter(movable).filter(e=>entryRank(e)>=3)
-          .sort((a,b)=>entryRank(b)-entryRank(a) || (a.row.timeMins??1e9)-(b.row.timeMins??1e9));
-        for(const eLate of lateI){
-          for(const eEarly of earlyJ){
-            if(!earlierThan(eEarly,eLate)) continue;
-            if( (bi.count - eLate.count + eEarly.count) <= eff(bi) &&
-                (bj.count - eEarly.count + eLate.count) <= eff(bj) ){
-              if(i===0 && !eligibleForBoat(eEarly.row,0,false)) continue;
-              if(!canLand(eLate, j)) continue;
-              const tempForI = {row:eEarly.row,count:eEarly.count,tags:eEarly.tags,highlights:eEarly.highlights};
-              if(tempForI.tags.has('DDI') && !B[i].tagDDI) continue;
-              if(tempForI.tags.has('F+R') && !B[i].tagFly) continue;
-              removeEntryFromBoat(i,eLate); removeEntryFromBoat(j,eEarly);
-              addEntryToBoat(i, eEarly, 'GLOBAL SWAP: earlier pulled earlier');
-              addEntryToBoat(j, eLate, 'GLOBAL SWAP: later pushed later');
-              changed=true; break outerSwap;
-            }
-          }
-        }
-      }
-    }
-    if(changed) continue;
-
-    // 7.c Push late forward (cascade light)
-    outerPush:
-    for(let i=0;i<B.length-1;i++){
-      const bi=B[i];
-      const candidates = bi.pax.filter(movable).filter(e=>entryRank(e)<=2)
-        .sort((a,b)=>entryRank(a)-entryRank(b) || (b.row.timeMins??-1)-(a.row.timeMins??-1));
-      for(const e of candidates){
-        for(let j=B.length-1;j>i;j--){
-          if(canLand(e,j)){
-            removeEntryFromBoat(i,e); addEntryToBoat(j,e,'GLOBAL: pushed later');
-            changed=true; break outerPush;
-          }
-        }
-      }
-    }
-    if(changed) continue;
-
-    // 7.d Pull early backward (toward earlier boats) where there is room
-    outerPull:
-    for(let i=0;i<B.length-1;i++){
-      const room = eff(B[i]) - B[i].count;
-      if(room<=0) continue;
-      const pullers=[];
-      for(let j=i+1;j<B.length;j++){
-        const early = B[j].pax.filter(movable).filter(e=>entryRank(e)>=3);
-        for(const e of early) pullers.push({j,e});
-      }
-      pullers.sort((A,B2)=>{
-        const a=A.e, b=B2.e;
-        return (entryRank(b)-entryRank(a)) || ((a.row.timeMins??1e9)-(b.row.timeMins??1e9));
-      });
-      for(const {j,e} of pullers){
-        if(i===0 && !eligibleForBoat(e.row,0,false)) continue;
-        if(e.tags.has('DDI') && !B[i].tagDDI) continue;
-        if(e.tags.has('F+R') && !B[i].tagFly) continue;
-        if(B[i].count + e.count <= eff(B[i])){
-          removeEntryFromBoat(j,e); addEntryToBoat(i,e,'GLOBAL: pulled earlier');
-          changed=true; break outerPull;
-        }
-      }
-    }
-    if(changed) continue;
-
-    // 7.e HARD EVAC Boat 1 (multi-set if needed)
-    const b0=B[0];
-    const lateOnB0 = b0.pax.filter(movable).filter(e=>{
-      const s=e.row.section; return s==='3rd'||s==='4th'||s==='Unknown';
-    }).sort((a,b)=>entryRank(a)-entryRank(b) || (b.row.timeMins??-1)-(a.row.timeMins??-1));
-    // Try single moves first
-    let evacuated=false;
-    for(const e of lateOnB0){
+  // 5e. Final sweep: evacuate any 3rd/4th/Unknown from Boat 1 into later boats if capacity exists
+  if(B.length){
+    const evict = B[0].pax.filter(e=>{
+      const s=e.row.section; return !e.locked && (s==='3rd'||s==='4th'||s==='Unknown');
+    }).sort((a,b)=>sectionRank(a.row.section)-sectionRank(b.row.section));
+    for(const e of evict){
+      let moved=false;
       for(let j=B.length-1;j>=1;j--){
-        if(canLand(e,j)){
-          removeEntryFromBoat(0,e); addEntryToBoat(j,e,'EVAC: moved off Boat 1');
-          changed=true; evacuated=true; break;
+        if(B[j].count + e.count <= eff(B[j]) && (!e.tags.has('F+R') || B[j].tagFly)){
+          // move
+          const k=B[0].pax.indexOf(e); if(k>=0){ B[0].pax.splice(k,1); B[0].count -= e.count; }
+          B[j].pax.push({row:e.row,count:e.count,tags:new Set(e.tags),highlights:new Set([...e.highlights,'Evacuated from Boat 1']),locked:false});
+          B[j].count += e.count; moved=true; break;
         }
       }
-      if(evacuated) break;
-    }
-    if(changed) continue;
-
-    // Try multi-donor freespace from Boat 1 into Boat 1+1 to send late out
-    if(lateOnB0.length){
-      // Choose a later boat j where the late entry could land if we free space on j by pushing its own donors further back
-      outerEvac:
-      for(const e of lateOnB0){
-        for(let j=1;j<B.length;j++){
-          if(!canLand(e,j)){
-            // Try to free seats on j by pushing its donors out
-            const donors = B[j].pax.filter(movable).sort((a,b)=>entryRank(a)-entryRank(b));
-            const need = e.count - (eff(B[j]) - B[j].count);
-            if(need<=0){
-              removeEntryFromBoat(0,e); addEntryToBoat(j,e,'EVAC: to boat '+(j+1));
-              changed=true; break outerEvac;
-            }
-            const subset = chooseDonorSubset(donors, need);
-            if(subset && placeDonorsLater(subset, j)){
-              removeEntryFromBoat(0,e); addEntryToBoat(j,e,'EVAC: after freeing space');
-              changed=true; break outerEvac;
-            }
-          }else{
-            removeEntryFromBoat(0,e); addEntryToBoat(j,e,'EVAC: direct');
-            changed=true; break outerEvac;
-          }
-        }
-      }
+      if(!moved){ e.highlights.add('FORCED STAY on Boat 1 (no capacity later)'); }
     }
   }
 
-  // Mark any unavoidable late entries left on Boat 1
-  B[0].pax.forEach(p=>{
-    const s=p.row.section;
-    if(s==='3rd'||s==='4th'||s==='Unknown'){
-      p.highlights.add('FORCED STAY on Boat 1 (no legal reachable seats)');
-    }
-  });
-
-  /* ===== Render output ===== */
+  /* ====================== Render ====================== */
   const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
   const results = el('results'); results.innerHTML='';
-
-  const meta=document.createElement('div'); meta.className='chips'; meta.style.margin='4px 0 8px';
-  if(usedUnknownBottomUp) meta.innerHTML += '<span class="chip">Unknown: bottom-up</span>';
-  if(usedEarly) meta.innerHTML += '<span class="chip">Early boat honoured</span>';
-  if(usedOwnWayLatest) meta.innerHTML += '<span class="chip">Own way → latest</span>';
-  if(meta.innerHTML) results.appendChild(meta);
-
-  let total=0, totalEffCap=0;
 
   if(ignoredCharter.length){
     const warn=document.createElement('div');
@@ -1015,6 +558,7 @@ function allocate(){
     results.appendChild(warn);
   }
 
+  let total=0, totalEffCap=0;
   B.forEach((b,idx)=>{
     total+=b.count; totalEffCap+=eff(b);
     const boatTags=[b.tagDDI?'DDI':'', b.tagFly?'Fly-Raft':'', b.tagEE?'EE':''].filter(Boolean).join('; ');
@@ -1069,7 +613,7 @@ function allocate(){
 
   const summary=document.createElement('div'); summary.className='status';
   summary.style.margin='10px 0 0';
-  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}<span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · multi-swap + edge-in optimizer</span>`;
+  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}<span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · edge-to-center repack</span>`;
   results.prepend(summary);
 
   // CSV Download
@@ -1098,7 +642,7 @@ function wire(){
     const text = await f.text();
     const raw = parseCSV(text);
 
-    // ===== BLANK ROW HANDLING =====
+    // BLANK ROW HANDLING (ignore blank header/padding rows)
     let headerRowIndex = raw.findIndex(r => !rowIsBlank(r));
     if(headerRowIndex === -1){ setStatus('Empty CSV.'); return; }
     const header = raw[headerRowIndex].map(h=>h.trim());
@@ -1147,7 +691,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus(`Ready. (v=${APP_VERSION} · multi-swap + edge-in optimizer active)`);
+    setStatus(`Ready. (v=${APP_VERSION} · edge-to-center repack active)`);
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
