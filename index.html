@@ -7,7 +7,7 @@
 
 <!-- Cache buster: bump this to force a fresh load -->
 <script>
-  const APP_VERSION = '2025-09-10-18-ripple-no-tw-header';
+  const APP_VERSION = '2025-09-10-18-fix-tw-double';
   (function(){
     try{
       const u = new URL(location.href);
@@ -298,7 +298,7 @@ function renderBoats(){
   }
 }
 
-/* ========= Allocation (No-split Ripple) ========= */
+/* ========= Allocation (No-split Ripple, TW double-count fix) ========= */
 function allocate(){
   clearMsgs(); popups = [];
   if(!rows.length){ setStatus('Please upload a CSV first.'); return; }
@@ -346,6 +346,9 @@ function allocate(){
     r.isOwnWayOrUnknown=isOwnWayOrUnknown(r);
     r._id = Math.random().toString(36).slice(2); // unique
   });
+
+  // Track rows placed in strict phases (used to avoid TW double-count)
+  const placedRows = new Set();
 
   // Target index for section — Unknown targets latest boat to bias bottom-up
   function sectionTargetIndex(section, n){
@@ -404,13 +407,13 @@ function allocate(){
     const order = ddiBoats.slice().sort((a,b)=>a-b);
     let done=false;
     for(const i of order){
-      if(B[i].count + r.num <= eff(B[i])){ addEntry(i, entryFromRow(r, true, ['DDI'])); done=true; break; }
+      if(B[i].count + r.num <= eff(B[i])){ addEntry(i, entryFromRow(r, true, ['DDI'])); placedRows.add(r); done=true; break; }
     }
     if(!done){
       for(let i=0;i<N;i++){
-        if(B[i].count + r.num <= eff(B[i])){ const e=entryFromRow(r,true,['DDI']); e.highlights.add('DDI overflow'); addEntry(i,e); done=true; break; }
+        if(B[i].count + r.num <= eff(B[i])){ const e=entryFromRow(r,true,['DDI']); e.highlights.add('DDI overflow'); addEntry(i,e); placedRows.add(r); done=true; break; }
       }
-      if(!done){ const e=entryFromRow(r,true,['DDI']); e.highlights.add('DDI overflow (over capacity)'); addEntry(0,e); }
+      if(!done){ const e=entryFromRow(r,true,['DDI']); e.highlights.add('DDI overflow (over capacity)'); addEntry(0,e); placedRows.add(r); }
     }
   }
 
@@ -423,17 +426,17 @@ function allocate(){
     const order = flyBoats.slice().sort((a,b)=>Math.abs(a-(N-1)) - Math.abs(b-(N-1)) || b-a);
     let done=false;
     for(const i of order){
-      if(B[i].count + r.num <= eff(B[i])){ addEntry(i, entryFromRow(r,true,['F+R'])); done=true; break; }
+      if(B[i].count + r.num <= eff(B[i])){ addEntry(i, entryFromRow(r,true,['F+R'])); placedRows.add(r); done=true; break; }
     }
     if(!done){
       for(let i=N-1;i>=0;i--){
-        if(B[i].count + r.num <= eff(B[i])){ const e=entryFromRow(r,true,['F+R']); e.highlights.add('F+R overflow'); addEntry(i,e); done=true; break; }
+        if(B[i].count + r.num <= eff(B[i])){ const e=entryFromRow(r,true,['F+R']); e.highlights.add('F+R overflow'); addEntry(i,e); placedRows.add(r); done=true; break; }
       }
-      if(!done){ const e=entryFromRow(r,true,['F+R']); e.highlights.add('F+R overflow (over capacity)'); addEntry(N-1,e); }
+      if(!done){ const e=entryFromRow(r,true,['F+R']); e.highlights.add('F+R overflow (over capacity)'); addEntry(N-1,e); placedRows.add(r); }
     }
   }
 
-  /* ========== Build NO-SPLIT units (TW groups unify) ========== */
+  /* ========== Build NO-SPLIT units (TW groups unify, but NEVER include pre-locked rows) ========== */
   function baseName(clientRaw){ return norm(clientRaw.replace(/\*TW\*.*$/i,'')); }
   function parseTW(row){ const m = row.clientRaw.match(/\*TW\*\s*(.+)$/i); return m?norm(m[1]):null; }
   const byName = new Map();
@@ -442,16 +445,19 @@ function allocate(){
     r.twPartner=parseTW(r);
     byName.set(r.nameClean,(byName.get(r.nameClean)||[]).concat([r]));
   });
+
   const grouped = new Set();
-  const units = []; // each unit: { id, rows:[...], num, flags derived from rows }
+  const units = []; // each unit: { id, rows:[...], num, flags }
+
   for(const r of filtered){
-    const placed = B.some(b=>b.pax.some(e=>e.row===r));
-    if(placed){ grouped.add(r); continue; }
+    if(placedRows.has(r)) { grouped.add(r); continue; }
     if(grouped.has(r)) continue;
 
     if(r.twPartner){
       const anchor = norm(r.twPartner);
-      const partner = (byName.get(anchor)||[])[0];
+      const cands = (byName.get(anchor)||[]).filter(x=>x!==r);
+      // Prefer a partner that is NOT pre-locked
+      const partner = cands.find(x=>!placedRows.has(x)) || null;
       if(partner){
         const rows2 = [r, partner].filter((x,i,arr)=>arr.indexOf(x)===i);
         rows2.forEach(x=>grouped.add(x));
@@ -468,7 +474,10 @@ function allocate(){
         units.push(unit);
         continue;
       }
+      // If partner exists but is pre-locked, do NOT group — avoid double count
+      // (Optional: we could push a warning, but keeping quiet per your request)
     }
+
     grouped.add(r);
     units.push({
       id: r._id,
@@ -483,7 +492,7 @@ function allocate(){
     });
   }
 
-  // Allocation order
+  // Allocation order (unchanged)
   units.sort((a,b)=>{
     const sa = secOrder(a.section), sb = secOrder(b.section);
     if(sa!==sb) return sa - sb;
