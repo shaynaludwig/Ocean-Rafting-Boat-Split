@@ -7,7 +7,7 @@
 
 <!-- Built-in cache buster: bump APP_VERSION when you update -->
 <script>
-  const APP_VERSION = '2025-09-10-5'; // ← bump this when you update
+  const APP_VERSION = '2025-09-10-6'; // ← bump this when you update
   (function () {
     try {
       const url = new URL(location.href);
@@ -661,23 +661,35 @@ function allocate(){
     if(unassigned.has(r) && placeNearSection(r)){ unassigned.delete(r); }
   });
 
-  /* ===== 7) SECONDARY OPTIMIZER: section-order swaps/pushes ===== */
+  /* ===== 7) GLOBAL SECONDARY OPTIMIZER: pairwise + cascade evacuation for Boat 1 ===== */
   function isTWGrouped(entry){
     return Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped'));
+  }
+  function entryRank(e){ return sectionRank(e.row.section); }
+  function earlierThan(a,b){
+    const ra=entryRank(a), rb=entryRank(b);
+    if(ra!==rb) return ra>rb; // higher rank = earlier section
+    const ta = a.row.timeMins ?? 1e9;
+    const tb = b.row.timeMins ?? 1e9;
+    return ta < tb; // earlier time
   }
   function canLand(entry, destIdx){
     const dest=B[destIdx];
     const cnt=entry.count;
-    // hard Boat 1 guard in secondary pass
     if(destIdx===0){
       const s=entry.row.section;
-      if(s==='3rd'||s==='4th'||s==='Unknown') return false;
+      if(s==='3rd'||s==='4th'||s==='Unknown') return false; // Boat 1 guard
     }
     // tags
     if(entry.tags.has('DDI') && !dest.tagDDI) return false;
     if(entry.tags.has('F+R') && !dest.tagFly) return false;
     // capacity
     if(dest.count + cnt > eff(dest)) return false;
+    return true;
+  }
+  function movable(entry){
+    if(isTWGrouped(entry)) return false;
+    if(entry.tags.has('DDI')) return false;
     return true;
   }
   function removeEntryFromBoat(idx, entry){
@@ -690,94 +702,141 @@ function allocate(){
     B[idx].pax.push({row:entry.row,count:entry.count,tags:new Set(tags),highlights:new Set(highs)});
     B[idx].count += entry.count;
   }
-  function earlierThan(a,b){
-    const ra=sectionRank(a.row.section), rb=sectionRank(b.row.section);
-    if(ra!==rb) return ra>rb; // higher rank = earlier
-    const ta = a.row.timeMins ?? 1e9;
-    const tb = b.row.timeMins ?? 1e9;
-    return ta < tb; // earlier time is earlier
-  }
-  function laterThan(a,b){ return earlierThan(b,a); }
 
-  // protect entries we should never move in the optimizer
-  function movable(entry){
-    if(isTWGrouped(entry)) return false;
-    if(entry.tags.has('DDI')) return false; // keep DDI fixed
-    return true; // F+R movable but only to Fly boats via canLand()
-  }
-
-  let changed=true, passes=0;
-  while(changed && passes<30){
-    changed=false; passes++;
-
-    for(let i=0;i<B.length-1;i++){
-      const bi=B[i], bj=B[i+1];
-
-      // Candidates
-      const lateOnEarly = bi.pax.filter(e=>movable(e)).sort((a,b)=>{
-        const ra=sectionRank(a.row.section), rb=sectionRank(b.row.section);
-        if(ra!==rb) return ra-rb; // later first (lower rank)
+  // Try to relocate 'entry' from 'fromIdx' to any later boat via single-hop or two-hop cascade
+  function tryCascadePlace(entry, fromIdx, noteBase){
+    const cnt = entry.count;
+    // 1) direct
+    for(let j=fromIdx+1;j<B.length;j++){
+      if(canLand(entry, j)){ removeEntryFromBoat(fromIdx, entry); addEntryToBoat(j, entry, noteBase+' (direct)'); return true; }
+    }
+    // 2) one-donor cascade: j blocked, move a late/movable donor from j to some k>j
+    for(let j=fromIdx+1;j<B.length;j++){
+      // choose donor on j: latest sections first
+      const donors = B[j].pax.filter(movable).sort((a,b)=>{
+        const ra=entryRank(a), rb=entryRank(b);
+        if(ra!==rb) return ra-rb; // later first
         const ta=a.row.timeMins??-1, tb=b.row.timeMins??-1;
-        return tb-ta; // later times first
+        return tb-ta; // later time first
       });
-      const earlyOnLate = bj.pax.filter(e=>movable(e)).sort((a,b)=>{
-        const ra=sectionRank(a.row.section), rb=sectionRank(b.row.section);
-        if(ra!==rb) return rb-ra; // earlier first (higher rank)
-        const ta=a.row.timeMins??1e9, tb=b.row.timeMins??1e9;
-        return ta-tb; // earliest times first
-      });
-
-      // 7.a Direct swap for improvement
-      outer:
-      for(const eLate of lateOnEarly){
-        for(const eEarly of earlyOnLate){
-          if(!earlierThan(eEarly,eLate)) continue; // must strictly improve section/time order
-          if(!canLand(eLate, i+1)) continue;
-          // check reverse land
-          // ensure Boat 1 inbound respects guard
-          if(i===0 && !eligibleForBoat(eEarly.row, 0, /*desperate*/false)) continue;
-          // capacity after swap
-          const biAfter = bi.count - eLate.count + eEarly.count;
-          const bjAfter = bj.count - eEarly.count + eLate.count;
-          if(biAfter <= eff(bi) && bjAfter <= eff(bj)){
-            // Apply swap
-            removeEntryFromBoat(i,eLate); removeEntryFromBoat(i+1,eEarly);
-            addEntryToBoat(i, eEarly, 'SECONDARY SWAP: earlier into earlier boat');
-            addEntryToBoat(i+1, eLate, 'SECONDARY SWAP: later moved later');
-            changed=true;
-            break outer;
+      for(const d of donors){
+        for(let k=j+1;k<B.length;k++){
+          if(canLand(d,k)){
+            // perform cascade
+            removeEntryFromBoat(j,d); addEntryToBoat(k,d,'CASCADE: pushed later to free seat');
+            if(canLand(entry, j)){ removeEntryFromBoat(fromIdx, entry); addEntryToBoat(j, entry, noteBase+' (cascade)'); return true; }
+            // if still blocked, revert donor move? We’ll keep improvement (it’s still better ordering) and continue outer loops
           }
         }
       }
-      if(changed) continue; // restart from first pair to ripple correctly
+    }
+    return false;
+  }
 
-      // 7.b One-way push: move late from earlier → later boat if space (no swap needed)
-      for(const eLate of lateOnEarly){
-        if(!canLand(eLate, i+1)) continue;
-        if(bj.count + eLate.count <= eff(bj)){
-          removeEntryFromBoat(i,eLate);
-          addEntryToBoat(i+1, eLate, 'SECONDARY: pushed later to improve order');
-          changed=true;
-          break;
+  let changed=true, passes=0;
+  while(changed && passes<80){
+    changed=false; passes++;
+
+    // 7.a Pairwise global swaps (i<j), prefer big improvements first
+    for(let i=0;i<B.length;i++){
+      for(let j=i+1;j<B.length;j++){
+        const bi=B[i], bj=B[j];
+        // Late on earlier boat (i)
+        const lateI = bi.pax.filter(movable).filter(e=>entryRank(e)<=2 /* 0/1/2 for Unknown/4th/3rd */)
+          .sort((a,b)=>entryRank(a)-entryRank(b) || (b.row.timeMins??-1)-(a.row.timeMins??-1));
+        // Early on later boat (j)
+        const earlyJ = bj.pax.filter(movable).filter(e=>entryRank(e)>=3 /* 3/4 for 2nd/1st */)
+          .sort((a,b)=>entryRank(b)-entryRank(a) || (a.row.timeMins??1e9)-(b.row.timeMins??1e9));
+        outer:
+        for(const eLate of lateI){
+          for(const eEarly of earlyJ){
+            if(!earlierThan(eEarly,eLate)) continue;
+            // capacity with swap
+            if( (bi.count - eLate.count + eEarly.count) <= eff(bi) &&
+                (bj.count - eEarly.count + eLate.count) <= eff(bj) ){
+              // Boat 1 guard for eEarly going into 0
+              if(i===0 && !eligibleForBoat(eEarly.row,0,false)) continue;
+              // tag compatibility for destinations
+              if(!canLand(eLate, j)) continue;
+              // eEarly → i must respect tags for boat i
+              const tempEntryForI = {row:eEarly.row,count:eEarly.count,tags:eEarly.tags,highlights:eEarly.highlights};
+              if(i===0 && (eLate.row.section==='3rd'||eLate.row.section==='4th'||eLate.row.section==='Unknown')){} // allowed because leaving 0
+              // Check tags for i
+              if(tempEntryForI.tags.has('DDI') && !B[i].tagDDI) continue;
+              if(tempEntryForI.tags.has('F+R') && !B[i].tagFly) continue;
+
+              // Apply swap
+              removeEntryFromBoat(i,eLate); removeEntryFromBoat(j,eEarly);
+              addEntryToBoat(i, eEarly, 'GLOBAL SWAP: earlier pulled earlier');
+              addEntryToBoat(j, eLate, 'GLOBAL SWAP: later pushed later');
+              changed=true;
+              break outer;
+            }
+          }
+        }
+        if(changed) break;
+      }
+      if(changed) break;
+    }
+    if(changed) continue;
+
+    // 7.b One-way pushes from earlier → later (any distance)
+    for(let i=0;i<B.length-1;i++){
+      const bi=B[i];
+      const candidates = bi.pax.filter(movable).filter(e=>entryRank(e)<=2) // later sections on earlier boats
+        .sort((a,b)=>entryRank(a)-entryRank(b) || (b.row.timeMins??-1)-(a.row.timeMins??-1));
+      for(const e of candidates){
+        if(tryCascadePlace(e, i, 'GLOBAL: pushed later')){ changed=true; break; }
+      }
+      if(changed) break;
+    }
+    if(changed) continue;
+
+    // 7.c Pull ups: if later boat has earlier sections and there is room in earlier boat
+    for(let i=0;i<B.length-1;i++){
+      const bi=B[i], room = eff(bi)-bi.count;
+      if(room<=0) continue;
+      const pullers=[];
+      for(let j=i+1;j<B.length;j++){
+        const early = B[j].pax.filter(movable).filter(e=>entryRank(e)>=3);
+        for(const e of early){ pullers.push({j,e}); }
+      }
+      pullers.sort((A,B2)=>{
+        const a=A.e, b=B2.e;
+        return (entryRank(b)-entryRank(a)) || ((a.row.timeMins??1e9)-(b.row.timeMins??1e9));
+      });
+      for(const {j,e} of pullers){
+        if(i===0 && !eligibleForBoat(e.row,0,false)) continue;
+        const cnt=e.count;
+        if(bi.count + cnt <= eff(bi)){
+          // tags for i
+          if(e.tags.has('DDI') && !B[i].tagDDI) continue;
+          if(e.tags.has('F+R') && !B[i].tagFly) continue;
+          removeEntryFromBoat(j,e); addEntryToBoat(i,e,'GLOBAL: pulled earlier');
+          changed=true; break;
         }
       }
-      if(changed) continue;
+      if(changed) break;
+    }
+    if(changed) continue;
 
-      // 7.c One-way pull: move early from later → earlier if space and Boat 1 guard holds
-      for(const eEarly of earlyOnLate){
-        if(i===0 && !eligibleForBoat(eEarly.row, 0, false)) continue;
-        // tags/capacity check for landing into i
-        const dummy={row:eEarly.row,count:eEarly.count,tags:eEarly.tags,highlights:eEarly.highlights};
-        if(bi.count + eEarly.count <= eff(bi)){
-          // also ensure we aren't making bj "earlier"
-          removeEntryFromBoat(i+1,eEarly);
-          addEntryToBoat(i, eEarly, 'SECONDARY: pulled earlier to improve order');
-          changed=true;
-          break;
-        }
-      }
+    // 7.d HARD EVAC of Boat 1 late pax via cascades (strongest rule)
+    const b0=B[0];
+    const lateOnB0 = b0.pax.filter(movable).filter(e=>{
+      const s=e.row.section; return s==='3rd'||s==='4th'||s==='Unknown';
+    }).sort((a,b)=>entryRank(a)-entryRank(b) || (b.row.timeMins??-1)-(a.row.timeMins??-1));
+    for(const e of lateOnB0){
+      if(tryCascadePlace(e, 0, 'EVAC from Boat 1')){ changed=true; break; }
     }
   }
+
+  // If anything still stuck on Boat 1 from 3rd/4th/Unknown, mark clearly
+  B[0].pax.forEach(p=>{
+    const s=p.row.section;
+    if(s==='3rd'||s==='4th'||s==='Unknown'){
+      p.highlights.add('FORCED STAY on Boat 1 (no legal reachable seats)');
+    }
+  });
 
   /* ===== Render output ===== */
   const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
@@ -853,7 +912,7 @@ function allocate(){
 
   const summary=document.createElement('div'); summary.className='status';
   summary.style.margin='10px 0 0';
-  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}<span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · secondary optimizer</span>`;
+  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}<span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · global+cascade optimizer</span>`;
   results.prepend(summary);
 
   // CSV Download
@@ -931,7 +990,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus(`Ready. (v=${APP_VERSION} · secondary optimizer active)`);
+    setStatus(`Ready. (v=${APP_VERSION} · global+cascade optimizer active)`);
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
