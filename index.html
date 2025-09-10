@@ -7,7 +7,7 @@
 
 <!-- Cache buster: bump this to force a fresh load -->
 <script>
-  const APP_VERSION = '2025-09-10-18-fix-tw-double';
+  const APP_VERSION = '2025-09-10-19-dedupe-guard';
   (function(){
     try{
       const u = new URL(location.href);
@@ -298,7 +298,7 @@ function renderBoats(){
   }
 }
 
-/* ========= Allocation (No-split Ripple, TW double-count fix) ========= */
+/* ========= Allocation (No-split Ripple + TW-protected + De-dup guard) ========= */
 function allocate(){
   clearMsgs(); popups = [];
   if(!rows.length){ setStatus('Please upload a CSV first.'); return; }
@@ -344,13 +344,10 @@ function allocate(){
     r.isEE =isEE(r);
     r.wantsEarly=wantsEarly(r);
     r.isOwnWayOrUnknown=isOwnWayOrUnknown(r);
-    r._id = Math.random().toString(36).slice(2); // unique
+    r._id = Math.random().toString(36).slice(2); // unique per CSV row
   });
 
-  // Track rows placed in strict phases (used to avoid TW double-count)
-  const placedRows = new Set();
-
-  // Target index for section — Unknown targets latest boat to bias bottom-up
+  // Helper: section target
   function sectionTargetIndex(section, n){
     if(section==='1st') return 0;
     if(section==='2nd') return Math.round((n-1)/3);
@@ -362,8 +359,8 @@ function allocate(){
   // Constraints
   function canSeatRowOnBoat(r, i){
     const b = B[i];
-    if(r.isFR && !b.tagFly) return false; // F+R strictly Fly
-    if(r.isDDI) return b.tagDDI === true; // DDI strictly DDI
+    if(r.isFR && !b.tagFly) return false;               // F+R strictly Fly
+    if(r.isDDI) return b.tagDDI === true;               // DDI strictly DDI
     if(b.tagDDI && (r.section==='3rd'||r.section==='4th'||r.section==='Unknown')) return false; // never late on DDI
     return true;
   }
@@ -391,13 +388,15 @@ function allocate(){
     if(idx+1<N)  opts.push(idx+1);
     return opts.sort((a,b)=>Math.abs(a-t)-Math.abs(b-t)||a-b);
   }
-  // Section distance for sorting "who to move first"
   function sectionDistance(row, boatIdx){
     const t = sectionTargetIndex(row.section, N);
     return Math.abs(boatIdx - t);
   }
 
   /* ========== PRE-LOCK strict categories (no splitting) ========== */
+
+  // Track rows placed in strict phases to avoid TW double-counts
+  const placedRows = new Set();
 
   // 1) DDI strict
   let ddiBoats = [...Array(N).keys()].filter(i=>B[i].tagDDI);
@@ -436,7 +435,7 @@ function allocate(){
     }
   }
 
-  /* ========== Build NO-SPLIT units (TW groups unify, but NEVER include pre-locked rows) ========== */
+  /* ========== Build NO-SPLIT units (TW groups unify; exclude pre-locked partner) ========== */
   function baseName(clientRaw){ return norm(clientRaw.replace(/\*TW\*.*$/i,'')); }
   function parseTW(row){ const m = row.clientRaw.match(/\*TW\*\s*(.+)$/i); return m?norm(m[1]):null; }
   const byName = new Map();
@@ -447,7 +446,7 @@ function allocate(){
   });
 
   const grouped = new Set();
-  const units = []; // each unit: { id, rows:[...], num, flags }
+  const units = [];
 
   for(const r of filtered){
     if(placedRows.has(r)) { grouped.add(r); continue; }
@@ -456,7 +455,6 @@ function allocate(){
     if(r.twPartner){
       const anchor = norm(r.twPartner);
       const cands = (byName.get(anchor)||[]).filter(x=>x!==r);
-      // Prefer a partner that is NOT pre-locked
       const partner = cands.find(x=>!placedRows.has(x)) || null;
       if(partner){
         const rows2 = [r, partner].filter((x,i,arr)=>arr.indexOf(x)===i);
@@ -474,8 +472,6 @@ function allocate(){
         units.push(unit);
         continue;
       }
-      // If partner exists but is pre-locked, do NOT group — avoid double count
-      // (Optional: we could push a warning, but keeping quiet per your request)
     }
 
     grouped.add(r);
@@ -492,7 +488,7 @@ function allocate(){
     });
   }
 
-  // Allocation order (unchanged)
+  // Allocation order
   units.sort((a,b)=>{
     const sa = secOrder(a.section), sb = secOrder(b.section);
     if(sa!==sb) return sa - sb;
@@ -613,10 +609,56 @@ function allocate(){
     }
   }
 
+  /* ====== NEW: global de-duplication pass ======
+     Ensures each original CSV row (_id) appears at most once. */
+  (function dedupePlacements(){
+    const seen = new Set();
+    for(let i=0;i<B.length;i++){
+      const b = B[i];
+      const next = [];
+      for(const e of b.pax){
+        const members = (e.row && e.row._unit) ? e.row._members.slice() : [e.row];
+        const keep = [];
+        for(const r of members){
+          if(!r || r._id==null){ keep.push(r); continue; }
+          if(seen.has(r._id)) {
+            e.highlights.add('De-duplicated');
+          } else {
+            seen.add(r._id);
+            keep.push(r);
+          }
+        }
+        if(keep.length===0){
+          // drop whole entry
+          b.count -= e.count;
+          continue;
+        }
+        if(keep.length !== members.length){
+          // shrink entry to remaining unique rows
+          const newCount = keep.reduce((s,x)=>s+(x.num||1),0);
+          b.count -= e.count;
+          e.count = newCount;
+          if(e.row && e.row._unit){
+            e.row = { ...keep[0], _unit:true, _members: keep };
+          }else{
+            e.row = keep[0];
+          }
+          b.count += e.count;
+        }
+        next.push(e);
+      }
+      b.pax = next;
+    }
+  })();
+
   /* ========== Render output (no *TW* GROUP header) ========== */
   const results = el('results'); results.innerHTML='';
   let total=0, totalEffCap=0;
-  B.forEach((b,idx)=>{ total+=b.count; totalEffCap+=eff(b); });
+  B.forEach((b)=>{ total+=b.count; totalEffCap+=eff(b); });
+
+  // Diagnostics: compute input pax & duplicate audit
+  const totalInputPax = filtered.reduce((s,r)=>s+(r.num||1),0);
+  const unavoidableOver = Math.max(0, totalInputPax - totalEffCap);
 
   const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
 
@@ -659,7 +701,6 @@ function allocate(){
     let rowNumber = 0;
     b.pax.forEach(entry=>{
       const rowsToShow = entry.row && entry.row._unit ? entry.row._members : [entry.row];
-      // Render only real passengers (no *TW* GROUP header)
       for(const r of rowsToShow){
         const tr=document.createElement('tr');
         tr.innerHTML = `
@@ -682,9 +723,11 @@ function allocate(){
 
   const summary=document.createElement('div'); summary.className='status';
   summary.style.margin='10px 0 0';
+  const diagNote = `Input pax: ${totalInputPax} · Seats: ${totalEffCap}` + (unavoidableOver>0?` · Overbooked by ${unavoidableOver} (overflow biases to latest boat)`:``);
   summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>
     ${total>totalEffCap?'<span class="pill bad" style="margin-left:6px">Over capacity</span>':''}
-    <span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · no-split ripple</span>`;
+    <span class="mono" style="margin-left:8px;opacity:.8">${diagNote}</span>
+    <span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · no-split ripple + de-dupe</span>`;
   results.prepend(summary);
 
   // CSV Download
@@ -762,7 +805,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus(`Ready. (v=${APP_VERSION} · no-split ripple allocator)`);
+    setStatus(`Ready. (v=${APP_VERSION} · no-split ripple + de-dupe)`);
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
