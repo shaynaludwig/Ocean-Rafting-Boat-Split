@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -7,7 +7,7 @@
 
 <!-- Built-in cache buster: bump APP_VERSION when you update -->
 <script>
-  const APP_VERSION = '2025-09-10-3';
+  const APP_VERSION = '2025-09-10-5'; // ← bump this when you update
   (function () {
     try {
       const url = new URL(location.href);
@@ -313,7 +313,6 @@ function allocate(){
   }));
   const eff = b => Math.max(0,b.seats-b.hold);
 
-  // Run-level flags for header chips
   let usedUnknownBottomUp=false, usedEarly=false, usedOwnWayLatest=false;
 
   /* ---- Proximity helpers ---- */
@@ -331,23 +330,21 @@ function allocate(){
       return da-db || a-b;
     });
   }
-  // Section-based index order; Unknown uses bottom-up (last→first)
   function indicesBySection(section){
     const n=B.length;
     if(section==='Unknown') return [...Array(n).keys()].reverse();
     const t=sectionTargetIndex(section,n);
     return proximityOrder(n,t);
   }
+  function sectionRank(s){ return {'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 0; }
 
-  // Strict eligibility for the FIRST boat:
-  // - Allow 1st (always) and 2nd (preferred) sections
-  // - Block 3rd/4th/Unknown unless absolutely no seat exists in boats 2..N
+  // Boat 1 eligibility guard
   function eligibleForBoat(row, idx, desperate){
     if(idx!==0) return true;
-    if(/early\s*boat/i.test(row.notes||'')) return true; // "early boat" overrides
+    if(/early\s*boat/i.test(row.notes||'')) return true;
     const s=row.section;
     if(s==='3rd' || s==='4th' || s==='Unknown') return !!desperate;
-    return true; // 1st/2nd ok
+    return true;
   }
 
   function addPax(i,r,tags=[],hl=[]){
@@ -355,9 +352,8 @@ function allocate(){
     b.pax.push({row:r,count:need,tags:new Set(tags),highlights:new Set(hl)});
     b.count+=need;
   }
-  function sectionRank(s){ return {'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 0; }
 
-  /* ---- Local swap to free seats on a target boat ---- */
+  /* ---- Local swap helper used in primary placement ---- */
   function tryMakeRoomWithSwap(targetIdx, need, refSec, requireFly){
     const target = B[targetIdx];
     const refRank = sectionRank(refSec);
@@ -372,8 +368,7 @@ function allocate(){
       const donorIsDDI = entry.tags.has('DDI') || /daydream\s*island/i.test(row.pu);
       const donorIsFR  = entry.tags.has('F+R') || row.flyFromCount || /(fly[-\s]*raft|fly\s*raft)/i.test(row.notes||'');
       const donorIsTW  = Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped'));
-      // Prefer moving later-section donors off earlier boats
-      if(donorRank >= refRank) continue; // only move donors from later sections than the reference
+      if(donorRank >= refRank) continue;
       if(donorIsDDI || donorIsTW) continue;
       for(const j of laterIdx){
         const land = B[j];
@@ -393,10 +388,11 @@ function allocate(){
   const edgeBoats = edges(B.length).map(i=>({i,b:B[i]}));
   const tagOrder = tag => edgeBoats.filter(o=>o.b[`tag${tag}`]).sort((a,b)=>a.i-b.i);
 
+  // Prepare sections
   const distinct=[...new Set(rows.map(r=>r.timeMins).filter(v=>v!=null))].sort((a,b)=>a-b);
   rows.forEach(r=>r.section = quartileSection(r.timeMins, distinct));
 
-  // classification helpers
+  // classification
   const isDDI   = r => /daydream\s*island/i.test(r.pu);
   const isEE    = r => /\bee\b/i.test(r.notes||'');
   const noteFly = r => /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||'');
@@ -407,13 +403,13 @@ function allocate(){
   const isOwnWay = r => /(own\s*way|tba|tbc|not\s*[-\s]*sure|unsure|unknown)/i.test(r.pu||'') ||
                         /(own\s*way|tba|tbc|not\s*[-\s]*sure|unsure|unknown)/i.test(r.notes||'');
 
-  // rows: remove WEATHER HOLD and charter, record charter for warning
+  // rows: filter
   const prepared = rows.slice();
   ignoredCharter = prepared.filter(r=>charter(r));
   const filtered = prepared.filter(r=>!wHoldName(r) && !charter(r));
   const unassigned = new Set(filtered);
 
-  /* ====== *TW* parsing/indexing ====== */
+  // *TW* parsing
   function baseName(clientRaw){ return norm(clientRaw.replace(/\*TW\*.*$/i,'')); }
   function parseTW(row){ const m = row.clientRaw.match(/\*TW\*\s*(.+)$/i); return m?norm(m[1]):null; }
   const byName = new Map();
@@ -455,7 +451,7 @@ function allocate(){
     }
   }
 
-  /* ===== 2) F+R STRICT (skip those asking for early boat) ===== */
+  /* ===== 2) F+R STRICT ===== */
   const flyRows = filtered.filter(r=>hasFR(r) && !wantsEarly(r))
     .sort((a,b)=>{
       const rank = s => ({'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 5);
@@ -477,7 +473,7 @@ function allocate(){
     }
   }
 
-  /* ===== 3) *TW* AFTER DDI & F+R (respect Boat-1 guard) ===== */
+  /* ===== 3) *TW* groups ===== */
   function sectionRefMember(arr){
     const known = arr.filter(r=>r.section && r.section!=='Unknown');
     if(!known.length) return null;
@@ -502,14 +498,12 @@ function allocate(){
     });
 
     const hardBlockBoat1 = (refSec==='3rd'||refSec==='4th'||refSec==='Unknown');
-    // Pass 1: avoid Boat 1 for 3rd/4th/Unknown
     for(const i of ordered){
       if(hardBlockBoat1 && i===0) continue;
       const capLeft = eff(B[i]) - B[i].count;
       if(capLeft >= need) return i;
       if(tryMakeRoomWithSwap(i, need - capLeft, refSec, requireFly)) return i;
     }
-    // Pass 2: only if literally nowhere else, allow Boat 1
     if(hardBlockBoat1){
       const i=0;
       const capLeft = eff(B[i]) - B[i].count;
@@ -547,18 +541,18 @@ function allocate(){
     }
   }
 
-  /* ===== 4) EARLY BOAT requests (after DDI & TW) — push to earliest boat possible */
+  /* ===== 4) Early boat requests ===== */
   function placeEarliest(r){
     const need=r.num||1;
     const tryOrders = [
-      [...Array(B.length).keys()].filter(i=>!B[i].tagDDI), // exclude DDI first
-      [...Array(B.length).keys()]                           // then allow DDI if needed
+      [...Array(B.length).keys()].filter(i=>!B[i].tagDDI),
+      [...Array(B.length).keys()]
     ];
     for(const order of tryOrders){
       for(const i of order){
         const capLeft = eff(B[i]) - B[i].count;
         if(capLeft >= need){ addPax(i,r,['Early boat']); usedEarly=true; return true; }
-        if(tryMakeRoomWithSwap(i, need - capLeft, '1st', /*requireFly=*/false)){
+        if(tryMakeRoomWithSwap(i, need - capLeft, '1st', false)){
           addPax(i,r,['Early boat'],['Local swap to get earliest boat']); usedEarly=true; return true;
         }
       }
@@ -569,18 +563,18 @@ function allocate(){
     if(placeEarliest(r)) unassigned.delete(r);
   }
 
-  /* ===== 4.5) OWN WAY / NOT SURE / TBA — force to LATEST possible boat ===== */
+  /* ===== 4.5) "Own way / TBA / Not sure" → latest ===== */
   function placeLatest(r, tagList=[], highlightNote=''){
     const need=r.num||1;
     const orders = [
-      [...Array(B.length).keys()].filter(i=>!B[i].tagDDI).reverse(), // prefer non-DDI, last → first
-      [...Array(B.length).keys()].reverse()                           // then include DDI if needed
+      [...Array(B.length).keys()].filter(i=>!B[i].tagDDI).reverse(),
+      [...Array(B.length).keys()].reverse()
     ];
     for(const order of orders){
       for(const i of order){
         const capLeft = eff(B[i]) - B[i].count;
         if(capLeft >= need){ addPax(i,r,tagList,highlightNote?[highlightNote]:[]); usedOwnWayLatest=true; return true; }
-        if(tryMakeRoomWithSwap(i, need - capLeft, '4th', /*requireFly=*/false)){
+        if(tryMakeRoomWithSwap(i, need - capLeft, '4th', false)){
           addPax(i,r,tagList,['Local swap to push later'].concat(highlightNote?[highlightNote]:[])); usedOwnWayLatest=true; return true;
         }
       }
@@ -591,14 +585,14 @@ function allocate(){
     if(placeLatest(r,['Own way → latest'])) unassigned.delete(r);
   }
 
-  /* ===== 5) EE — prefer EE boats; ignore EE if 1st section or no EE capacity ===== */
+  /* ===== 5) EE handling ===== */
   const eeBoatIdx = tagOrder('EE').map(x=>x.i);
 
   function placeNearSection(r, tagList=[], highlightNote=''){
     const need=r.num||1;
     const ordered = indicesBySection(r.section);
 
-    // Primary pass — respect "no 3rd/4th/Unknown on first boat" rule
+    // Prefer near section; avoid Boat 1 for 3rd/4th/Unknown
     for(const i of ordered){
       if(!eligibleForBoat(r,i,false)) continue;
       const capLeft = eff(B[i]) - B[i].count;
@@ -607,37 +601,26 @@ function allocate(){
         if(r.section==='Unknown') usedUnknownBottomUp=true;
         return true;
       }
-      if(tryMakeRoomWithSwap(i, need - capLeft, r.section, /*requireFly=*/false)){
+      if(tryMakeRoomWithSwap(i, need - capLeft, r.section, false)){
         addPax(i,r,tagList, ['Local swap to keep near section'].concat(highlightNote?[highlightNote]:[]));
         if(r.section==='Unknown') usedUnknownBottomUp=true;
         return true;
       }
     }
-
-    // Secondary capacity fallback — still avoid first boat for 3rd/4th/Unknown
+    // Secondary fallback: still avoid Boat 1 for 3rd/4th/Unknown
     if(r.section==='Unknown'){
-      for(let i=B.length-1;i>=1;i--){ // skip 0
+      for(let i=B.length-1;i>=1;i--){
         if(B[i].count + need <= eff(B[i])){ addPax(i,r,tagList, ['Capacity fallback (bottom-up)'].concat(highlightNote?[highlightNote]:[])); usedUnknownBottomUp=true; return true; }
       }
     }else{
-      for(let i=1;i<B.length;i++){ // skip 0
+      for(let i=1;i<B.length;i++){
         if(B[i].count + need <= eff(B[i])){ addPax(i,r,tagList, ['Capacity fallback'].concat(highlightNote?[highlightNote]:[])); return true; }
       }
     }
-
-    // DESPERATE final fallback — allow first boat ONLY if no seat anywhere else
+    // Final fallback: only Boat 1 if no seat anywhere else
     for(let i=1;i<B.length;i++){
-      const capLeft = eff(B[i]) - B[i].count;
-      if(capLeft >= need) return false; // there IS a seat elsewhere; earlier logic should've placed. Prevent Boat 1.
+      if(eff(B[i]) - B[i].count >= need) return false; // seat exists elsewhere
     }
-    for(let i=1;i<B.length;i++){
-      const capLeft = eff(B[i]) - B[i].count;
-      if(tryMakeRoomWithSwap(i, need - Math.max(0,capLeft), r.section, false)){
-        addPax(i,r,tagList,['Desperate swap (kept off Boat 1)'].concat(highlightNote?[highlightNote]:[]));
-        return true;
-      }
-    }
-    // truly nowhere else:
     if(B[0].count + need <= eff(B[0])){ addPax(0,r,tagList,['Desperate fallback (no seats anywhere)'].concat(highlightNote?[highlightNote]:[])); return true; }
     return false;
   }
@@ -668,7 +651,7 @@ function allocate(){
     if(placeNearSection(r,['EE','Ignored EE (capacity)'])){ unassigned.delete(r); }
   }
 
-  /* ===== 6) Baseline fill — keep sections near their boats; avoid Boat 1 for 3rd/4th/Unknown ===== */
+  /* ===== 6) Baseline fill ===== */
   const orderSec={'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4};
   [...unassigned].sort((a,b)=>{
     const da=orderSec[a.section]??4, db=orderSec[b.section]??4;
@@ -678,11 +661,128 @@ function allocate(){
     if(unassigned.has(r) && placeNearSection(r)){ unassigned.delete(r); }
   });
 
+  /* ===== 7) SECONDARY OPTIMIZER: section-order swaps/pushes ===== */
+  function isTWGrouped(entry){
+    return Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped'));
+  }
+  function canLand(entry, destIdx){
+    const dest=B[destIdx];
+    const cnt=entry.count;
+    // hard Boat 1 guard in secondary pass
+    if(destIdx===0){
+      const s=entry.row.section;
+      if(s==='3rd'||s==='4th'||s==='Unknown') return false;
+    }
+    // tags
+    if(entry.tags.has('DDI') && !dest.tagDDI) return false;
+    if(entry.tags.has('F+R') && !dest.tagFly) return false;
+    // capacity
+    if(dest.count + cnt > eff(dest)) return false;
+    return true;
+  }
+  function removeEntryFromBoat(idx, entry){
+    const arr=B[idx].pax; const k=arr.indexOf(entry);
+    if(k>=0){ arr.splice(k,1); B[idx].count -= entry.count; }
+  }
+  function addEntryToBoat(idx, entry, note){
+    const tags=[...entry.tags];
+    const highs=[...entry.highlights, note].filter(Boolean);
+    B[idx].pax.push({row:entry.row,count:entry.count,tags:new Set(tags),highlights:new Set(highs)});
+    B[idx].count += entry.count;
+  }
+  function earlierThan(a,b){
+    const ra=sectionRank(a.row.section), rb=sectionRank(b.row.section);
+    if(ra!==rb) return ra>rb; // higher rank = earlier
+    const ta = a.row.timeMins ?? 1e9;
+    const tb = b.row.timeMins ?? 1e9;
+    return ta < tb; // earlier time is earlier
+  }
+  function laterThan(a,b){ return earlierThan(b,a); }
+
+  // protect entries we should never move in the optimizer
+  function movable(entry){
+    if(isTWGrouped(entry)) return false;
+    if(entry.tags.has('DDI')) return false; // keep DDI fixed
+    return true; // F+R movable but only to Fly boats via canLand()
+  }
+
+  let changed=true, passes=0;
+  while(changed && passes<30){
+    changed=false; passes++;
+
+    for(let i=0;i<B.length-1;i++){
+      const bi=B[i], bj=B[i+1];
+
+      // Candidates
+      const lateOnEarly = bi.pax.filter(e=>movable(e)).sort((a,b)=>{
+        const ra=sectionRank(a.row.section), rb=sectionRank(b.row.section);
+        if(ra!==rb) return ra-rb; // later first (lower rank)
+        const ta=a.row.timeMins??-1, tb=b.row.timeMins??-1;
+        return tb-ta; // later times first
+      });
+      const earlyOnLate = bj.pax.filter(e=>movable(e)).sort((a,b)=>{
+        const ra=sectionRank(a.row.section), rb=sectionRank(b.row.section);
+        if(ra!==rb) return rb-ra; // earlier first (higher rank)
+        const ta=a.row.timeMins??1e9, tb=b.row.timeMins??1e9;
+        return ta-tb; // earliest times first
+      });
+
+      // 7.a Direct swap for improvement
+      outer:
+      for(const eLate of lateOnEarly){
+        for(const eEarly of earlyOnLate){
+          if(!earlierThan(eEarly,eLate)) continue; // must strictly improve section/time order
+          if(!canLand(eLate, i+1)) continue;
+          // check reverse land
+          // ensure Boat 1 inbound respects guard
+          if(i===0 && !eligibleForBoat(eEarly.row, 0, /*desperate*/false)) continue;
+          // capacity after swap
+          const biAfter = bi.count - eLate.count + eEarly.count;
+          const bjAfter = bj.count - eEarly.count + eLate.count;
+          if(biAfter <= eff(bi) && bjAfter <= eff(bj)){
+            // Apply swap
+            removeEntryFromBoat(i,eLate); removeEntryFromBoat(i+1,eEarly);
+            addEntryToBoat(i, eEarly, 'SECONDARY SWAP: earlier into earlier boat');
+            addEntryToBoat(i+1, eLate, 'SECONDARY SWAP: later moved later');
+            changed=true;
+            break outer;
+          }
+        }
+      }
+      if(changed) continue; // restart from first pair to ripple correctly
+
+      // 7.b One-way push: move late from earlier → later boat if space (no swap needed)
+      for(const eLate of lateOnEarly){
+        if(!canLand(eLate, i+1)) continue;
+        if(bj.count + eLate.count <= eff(bj)){
+          removeEntryFromBoat(i,eLate);
+          addEntryToBoat(i+1, eLate, 'SECONDARY: pushed later to improve order');
+          changed=true;
+          break;
+        }
+      }
+      if(changed) continue;
+
+      // 7.c One-way pull: move early from later → earlier if space and Boat 1 guard holds
+      for(const eEarly of earlyOnLate){
+        if(i===0 && !eligibleForBoat(eEarly.row, 0, false)) continue;
+        // tags/capacity check for landing into i
+        const dummy={row:eEarly.row,count:eEarly.count,tags:eEarly.tags,highlights:eEarly.highlights};
+        if(bi.count + eEarly.count <= eff(bi)){
+          // also ensure we aren't making bj "earlier"
+          removeEntryFromBoat(i+1,eEarly);
+          addEntryToBoat(i, eEarly, 'SECONDARY: pulled earlier to improve order');
+          changed=true;
+          break;
+        }
+      }
+    }
+  }
+
   /* ===== Render output ===== */
   const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
   const results = el('results'); results.innerHTML='';
 
-  // Header chips for run-level behaviours
   const meta=document.createElement('div'); meta.className='chips'; meta.style.margin='4px 0 8px';
   if(usedUnknownBottomUp) meta.innerHTML += '<span class="chip">Unknown: bottom-up</span>';
   if(usedEarly) meta.innerHTML += '<span class="chip">Early boat honoured</span>';
@@ -753,7 +853,7 @@ function allocate(){
 
   const summary=document.createElement('div'); summary.className='status';
   summary.style.margin='10px 0 0';
-  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}<span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION}</span>`;
+  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}<span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · secondary optimizer</span>`;
   results.prepend(summary);
 
   // CSV Download
@@ -782,7 +882,7 @@ function wire(){
     const text = await f.text();
     const raw = parseCSV(text);
 
-    // ===== BLANK ROW HANDLING: find first non-blank row as header; drop blank rows =====
+    // ===== BLANK ROW HANDLING =====
     let headerRowIndex = raw.findIndex(r => !rowIsBlank(r));
     if(headerRowIndex === -1){ setStatus('Empty CSV.'); return; }
     const header = raw[headerRowIndex].map(h=>h.trim());
@@ -831,7 +931,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus(`Ready. (v=${APP_VERSION} + strict Boat-1 guard for 3rd/4th/Unknown & TW)`);
+    setStatus(`Ready. (v=${APP_VERSION} · secondary optimizer active)`);
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
