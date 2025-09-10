@@ -650,4 +650,172 @@ function allocate(){
     head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
     head.style.margin='8px 0 4px';
     const tagStr=[b.tagDDI?'DDI':'', b.tagFly?'Fly-Raft':'', b.tagEE?'EE':''].filter(Boolean).join('; ');
-    head.innerHTML = `<div><b>${idx+1}. ${b.name}</b> &nbsp; <span class="pill ${b.count<=eff(b)?'ok':'bad'}">${
+    head.innerHTML = `<div><b>${idx+1}. ${b.name}</b> &nbsp; <span class="pill ${b.count<=eff(b)?'ok':'bad'}">${b.count}/${eff(b)}</span></div>
+      <div class="chips">
+        ${b.tagDDI?'<span class="chip">DDI</span>':''}
+        ${b.tagFly?'<span class="chip">Fly-Raft</span>':''}
+        ${b.tagEE?'<span class="chip">EE</span>':''}
+        ${b.toilet?'<span class="chip">🚻</span>':''}
+      </div>`;
+    results.appendChild(head);
+
+    const table=document.createElement('table');
+    table.innerHTML = `<thead><tr>
+      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Highlights</th>
+    </tr></thead>`;
+    const tb=document.createElement('tbody');
+
+    if(b.hold>0){
+      const tr=document.createElement('tr');
+      tr.innerHTML=`
+        <td>—</td><td>SEAT HOLD</td><td>${b.hold}</td>
+        <td></td><td></td><td></td>
+        <td><span class="pill tag">Hold</span></td>
+        <td><span class="pill warn">Seats reserved; not for allocation</span></td>`;
+      tb.appendChild(tr);
+      out.push([b.name,idx+1,b.hold,tagStr,'SEAT HOLD',b.hold,'','','','','Hold','Seats reserved; not for allocation','']);
+    }
+
+    let rowNumber = 0;
+    for(const e of b.pax){
+      for(const r of e.members){
+        const tr=document.createElement('tr');
+        tr.innerHTML = `
+          <td>${++rowNumber}</td>
+          <td>${escapeHtml(r.clientRaw)}</td>
+          <td>${r.num||1}</td>
+          <td>${escapeHtml(r.pu)}</td>
+          <td>${r.time||''}</td>
+          <td>${r.section}</td>
+          <td>${[...e.tags].map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
+          <td>${[...e.highlights].map(t=>`<span class="pill warn">${escapeHtml(t)}</span>`).join(' ')}</td>`;
+        tb.appendChild(tr);
+        out.push([b.name,idx+1,b.hold,tagStr,r.clientRaw,(r.num||1),r.pu,r.time||'',r.notes||'',r.phone||'',[...e.tags].join('; '),[...e.highlights].join('; '),r.section]);
+      }
+    }
+
+    table.appendChild(tb);
+    results.appendChild(table);
+  });
+
+  const summary=document.createElement('div'); summary.className='status';
+  summary.style.margin='10px 0 0';
+  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>
+    ${total>totalEffCap?'<span class="pill bad" style="margin-left:6px">Over capacity</span>':''}
+    <span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · dedupe+balance+spread</span>`;
+  results.prepend(summary);
+
+  // CSV Download
+  const toCSV = rows => rows.map(r=>r.map(v=>{
+    if(v==null) return '';
+    const s=String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  }).join(',')).join('\n');
+  const csv = toCSV(out);
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob);
+  const dl=document.getElementById('download');
+  dl.onclick=()=>{ const stamp=new Date().toISOString().slice(0,10); const a=document.createElement('a'); a.href=url; a.download=`boat-split-${document.getElementById('tour').value}-${stamp}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
+  dl.disabled=false;
+
+  setStatus('Allocation complete.');
+}
+
+/* ========= Wiring ========= */
+function wire(){
+  el('resetBoats').onclick=()=>{ boats=cloneBoats(); renderBoats(); setStatus('Boats reset.'); };
+  el('run').onclick=allocate;
+
+  el('file').addEventListener('change', async e=>{
+    clearMsgs(); popups=[];
+    const f=e.target.files?.[0]; if(!f) return;
+    const text = await f.text();
+    const raw = parseCSV(text);
+
+    // IGNORE BLANK ROWS (header may not be first line)
+    const headerRowIndex = raw.findIndex(r => !rowIsBlank(r));
+    if(headerRowIndex === -1){ setStatus('Empty CSV.'); return; }
+    const header = raw[headerRowIndex].map(h=>h.trim());
+    const data = raw.slice(headerRowIndex+1).filter(r => !rowIsBlank(r));
+    const dropped = raw.length - (1 + data.length);
+    if(dropped>0) pushMsg(`Ignored ${dropped} blank row(s).`,'warn');
+
+    const idxClient=findColIndex(header,COL_ALIASES.client);
+    const idxNum   =findColIndex(header,COL_ALIASES.num);
+    const idxPU    =findColIndex(header,COL_ALIASES.pu);
+    const idxTime  =findColIndex(header,COL_ALIASES.time);
+    const idxNotes =findColIndex(header,COL_ALIASES.notes);
+    const idxPhone =findColIndex(header,COL_ALIASES.phone);
+
+    if(idxClient<0 || idxPU<0){ setStatus('Missing required columns: need at least Client and P/U Point.'); return; }
+
+    // Parse rows
+    const parsed = data.map(r=>{
+      const clientRaw = norm(r[idxClient]);
+      const numRaw = (idxNum>=0 ? r[idxNum] : '').toString();
+      const FRfromCount  = /\(\s*F\s*\+\s*R\s*\)/i.test(numRaw);
+      const FRfromClient = /\(\s*F\s*\+\s*R\s*\)/i.test(clientRaw);
+      const FRfromNotes  = /\(\s*F\s*\+\s*R\s*\)/i.test(norm(idxNotes>=0?r[idxNotes]:'')); 
+      const flyFromAny   = FRfromCount || FRfromClient || FRfromNotes;
+
+      const numMatch = numRaw.match(/\d+/);
+      const num = Math.max(1, numMatch ? parseInt(numMatch[0],10) : 1);
+
+      const pu   = norm(r[idxPU]);
+      const time = norm(idxTime>=0?r[idxTime]:'');
+      const notes= norm(idxNotes>=0?r[idxNotes]:'');
+      const phone= norm(idxPhone>=0?r[idxPhone]:'');
+      const timeMins = parseTimeToSortable(time);
+
+      return { clientRaw, num, pu, time, timeMins, notes, phone, flyFromCount: flyFromAny };
+    });
+
+    // De-duplicate identical bookings (Client + PU + Time; case/space-insensitive)
+    const keyFor = o => `${lower(o.clientRaw)}|${lower(o.pu)}|${lower(o.time)}`;
+    const acc = new Map();
+    for(const r of parsed){
+      const k = keyFor(r);
+      if(acc.has(k)){
+        acc.get(k).num += r.num;  // merge counts
+      }else{
+        acc.set(k, {...r});
+      }
+    }
+    const merged = Array.from(acc.values());
+    const mergedDelta = parsed.length - merged.length;
+    if(mergedDelta>0) pushMsg(`Coalesced ${mergedDelta} duplicate row(s) by Client+PU+Time.`,`ok`);
+
+    rows = merged;
+
+    el('results').innerHTML='<span class="muted">File loaded. Configure boats, then <b>Allocate</b>.</span>';
+    el('download').disabled=true;
+    setStatus(`Loaded ${rows.length} unique bookings. (v=${APP_VERSION})`);
+  });
+}
+
+/* ========= Boot ========= */
+function init(){
+  try{
+    boats = cloneBoats();
+    renderBoats();
+    wire();
+    setStatus(`Ready. (v=${APP_VERSION} · dedupe+balance+spread)`);
+  }catch(e){
+    const host = document.querySelector('#results');
+    const pre = document.createElement('div');
+    pre.className='err';
+    pre.textContent='Init error: '+(e&&e.stack?e.stack:String(e));
+    host?.prepend(pre);
+  }
+}
+if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', init); } else { init(); }
+
+/* helper needed by wire() — keep here for scope */
+function findColIndex(h,keys){
+  const lowerh=h.map(x=>x.toLowerCase());
+  for(const k of keys){ const i=lowerh.indexOf(k); if(i!==-1) return i; }
+  for(let i=0;i<lowerh.length;i++){ if(keys.some(k=>lowerh[i].includes(k))) return i; }
+  return -1;
+}
+</script>
+</body>
+</html>
