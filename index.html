@@ -7,7 +7,7 @@
 
 <!-- Cache buster: bump this to force a fresh load -->
 <script>
-  const APP_VERSION = '2025-09-10-17-ripple';
+  const APP_VERSION = '2025-09-10-18-ripple-no-tw-header';
   (function(){
     try{
       const u = new URL(location.href);
@@ -359,12 +359,9 @@ function allocate(){
   // Constraints
   function canSeatRowOnBoat(r, i){
     const b = B[i];
-    // F+R strictly on Fly
-    if(r.isFR && !b.tagFly) return false;
-    // DDI strictly on DDI boat(s)
-    if(r.isDDI) return b.tagDDI === true;
-    // Never place late sections on DDI
-    if(b.tagDDI && (r.section==='3rd'||r.section==='4th'||r.section==='Unknown')) return false;
+    if(r.isFR && !b.tagFly) return false; // F+R strictly Fly
+    if(r.isDDI) return b.tagDDI === true; // DDI strictly DDI
+    if(b.tagDDI && (r.section==='3rd'||r.section==='4th'||r.section==='Unknown')) return false; // never late on DDI
     return true;
   }
 
@@ -404,20 +401,16 @@ function allocate(){
   const ddiRows = filtered.filter(r=>r.isDDI);
   if(ddiRows.length && !ddiBoats.length && N){ B[0].tagDDI=true; ddiBoats=[0]; pushMsg('Auto-tagged earliest boat as DDI.','warn'); }
   for(const r of ddiRows){
-    // try place on any DDI boat (closest to 1st by index)
     const order = ddiBoats.slice().sort((a,b)=>a-b);
     let done=false;
     for(const i of order){
       if(B[i].count + r.num <= eff(B[i])){ addEntry(i, entryFromRow(r, true, ['DDI'])); done=true; break; }
     }
     if(!done){
-      // overflow: place on earliest possible boat with flag (still whole)
       for(let i=0;i<N;i++){
         if(B[i].count + r.num <= eff(B[i])){ const e=entryFromRow(r,true,['DDI']); e.highlights.add('DDI overflow'); addEntry(i,e); done=true; break; }
       }
-      if(!done){ // final: force overfill and flag
-        const e=entryFromRow(r,true,['DDI']); e.highlights.add('DDI overflow (over capacity)'); addEntry(0,e);
-      }
+      if(!done){ const e=entryFromRow(r,true,['DDI']); e.highlights.add('DDI overflow (over capacity)'); addEntry(0,e); }
     }
   }
 
@@ -426,14 +419,13 @@ function allocate(){
   const frRows = filtered.filter(r=>r.isFR);
   if(frRows.length && !flyBoats.length && N){ B[N-1].tagFly=true; flyBoats=[N-1]; pushMsg('Auto-tagged latest boat as Fly-Raft.','warn'); }
   for(const r of frRows){
-    if(r.isDDI) continue; // already placed above
-    const order = flyBoats.slice().sort((a,b)=>Math.abs(a-(N-1)) - Math.abs(b-(N-1)) || b-a); // bias later
+    if(r.isDDI) continue;
+    const order = flyBoats.slice().sort((a,b)=>Math.abs(a-(N-1)) - Math.abs(b-(N-1)) || b-a);
     let done=false;
     for(const i of order){
       if(B[i].count + r.num <= eff(B[i])){ addEntry(i, entryFromRow(r,true,['F+R'])); done=true; break; }
     }
     if(!done){
-      // overflow late
       for(let i=N-1;i>=0;i--){
         if(B[i].count + r.num <= eff(B[i])){ const e=entryFromRow(r,true,['F+R']); e.highlights.add('F+R overflow'); addEntry(i,e); done=true; break; }
       }
@@ -453,7 +445,6 @@ function allocate(){
   const grouped = new Set();
   const units = []; // each unit: { id, rows:[...], num, flags derived from rows }
   for(const r of filtered){
-    // already placed? (locked DDI/F+R above)
     const placed = B.some(b=>b.pax.some(e=>e.row===r));
     if(placed){ grouped.add(r); continue; }
     if(grouped.has(r)) continue;
@@ -469,17 +460,15 @@ function allocate(){
           rows: rows2,
           num: rows2.reduce((s,x)=>s+(x.num||1),0),
         };
-        // derive flags (if any row is own way → late; any EE → EE; section = best/earliest among rows)
         unit.section = rows2.map(x=>x.section).sort((a,b)=>secOrder(a)-secOrder(b))[0]||'Unknown';
         unit.isEE = rows2.some(x=>x.isEE);
         unit.wantsEarly = rows2.some(x=>x.wantsEarly);
         unit.isOwnWayOrUnknown = rows2.some(x=>x.isOwnWayOrUnknown);
-        unit.isFR = false; unit.isDDI = false; // any FR/DDI would have been pre-locked
+        unit.isFR = false; unit.isDDI = false;
         units.push(unit);
         continue;
       }
     }
-    // singleton
     grouped.add(r);
     units.push({
       id: r._id,
@@ -489,52 +478,43 @@ function allocate(){
       isEE: r.isEE,
       wantsEarly: r.wantsEarly,
       isOwnWayOrUnknown: r.isOwnWayOrUnknown,
-      isFR: r.isFR, // should be false here (FR pre-locked), but keep for safety
+      isFR: r.isFR,
       isDDI: r.isDDI
     });
   }
 
-  // Allocation order: 1st → 2nd → 3rd → 4th → Unknown; larger groups first; "own way" later within same section; early-flag wins tie
+  // Allocation order
   units.sort((a,b)=>{
     const sa = secOrder(a.section), sb = secOrder(b.section);
     if(sa!==sb) return sa - sb;
     const ea = a.wantsEarly?1:0, eb = b.wantsEarly?1:0;
     if(ea!==eb) return eb - ea;
     const la = a.isOwnWayOrUnknown?1:0, lb = b.isOwnWayOrUnknown?1:0;
-    if(la!==lb) return la - lb; // ownway later
-    return (b.num||1) - (a.num||1); // big groups first
+    if(la!==lb) return la - lb;
+    return (b.num||1) - (a.num||1);
   });
 
-  // Candidate boats for a unit
+  // Candidate boats
   function candidateBoatsFor(unit){
-    // usable boats by constraint
     const usable = [...Array(N).keys()].filter(i=>{
       return unit.rows.every(r => canSeatRowOnBoat(r, i));
     });
-
-    // sort by closeness to target (Unknown targets latest)
     const t = sectionTargetIndex(unit.section, N);
     usable.sort((a,b)=>Math.abs(a-t)-Math.abs(b-t) || a-b);
-
-    // EE preference (not for 1st section) → stable bring EE-tag boats earlier
     if(unit.isEE && unit.section!=='1st'){
       const eeIdx = usable.filter(i=>B[i].tagEE);
       const non = usable.filter(i=>!B[i].tagEE);
       usable.splice(0, usable.length, ...eeIdx, ...non);
     }
-
-    // "own way" late bias: stable favor later boats
     if(unit.isOwnWayOrUnknown){
-      usable.sort((a,b)=>a-b); // ensure deterministic
-      usable.reverse(); // later first
+      usable.sort((a,b)=>a-b);
+      usable.reverse();
     }
-
     return usable;
   }
 
   // Ripple helpers
   function tryMoveEntry(fromIdx, entry, depth, seen){
-    // Try to move 'entry' whole to a neighbor (or ripple further)
     const refRow = entry.row;
     for(const nb of neighbors(fromIdx, refRow)){
       if(!canSeatRowOnBoat(refRow, nb)) continue;
@@ -548,7 +528,6 @@ function allocate(){
         const key = nb+'|'+entry.row._id;
         if(!seen.has(key)){
           seen.add(key);
-          // Try to free space on nb by moving something else
           if(rippleFree(nb, entry.count, entry.row, depth-1, seen)){
             removeEntry(fromIdx, entry);
             addEntry(nb, entry);
@@ -562,21 +541,16 @@ function allocate(){
   }
 
   function rippleFree(boatIdx, need, orientRow, depth, seen){
-    // If already enough free seats, we're good
     if(eff(B[boatIdx]) - B[boatIdx].count >= need) return true;
-
-    // Consider non-locked entries to move, worst-fit first (and bigger first)
     const movable = B[boatIdx].pax.filter(e=>!e.locked);
     movable.sort((a,b)=>{
       const da = sectionDistance(a.row, boatIdx), db = sectionDistance(b.row, boatIdx);
-      if(da!==db) return db - da; // move worse-fitting first
-      return (b.count||1) - (a.count||1); // larger first
+      if(da!==db) return db - da;
+      return (b.count||1) - (a.count||1);
     });
-
     for(const e of movable){
       if(tryMoveEntry(boatIdx, e, depth, seen)){
         if(eff(B[boatIdx]) - B[boatIdx].count >= need) return true;
-        // else keep trying to free more
       }
     }
     return false;
@@ -584,56 +558,53 @@ function allocate(){
 
   function placeOrRippleUnit(unit, targetBoat, maxDepth){
     const need = unit.num;
-    // Direct fit?
     if(B[targetBoat].count + need <= eff(B[targetBoat])){
-      // add all rows as a single entry (kept as a unit)
       const e = entryFromRow(unit.rows[0], false, []);
-      e.count = need; // whole unit count
-      e.row = { ...unit.rows[0], _unit:true, _members:unit.rows }; // store members on row
+      e.count = need;
+      e.row = { ...unit.rows[0], _unit:true, _members:unit.rows };
+      if(unit.rows.length>1) e.highlights.add('*TW* grouped');
       addEntry(targetBoat, e);
       return true;
     }
-    // Try ripple to free on target
     const seen = new Set();
     if(rippleFree(targetBoat, need, unit.rows[0], maxDepth, seen)){
       const e = entryFromRow(unit.rows[0], false, []);
-      e.count = need; e.row = { ...unit.rows[0], _unit:true, _members:unit.rows };
+      e.count = need;
+      e.row = { ...unit.rows[0], _unit:true, _members:unit.rows };
+      if(unit.rows.length>1) e.highlights.add('*TW* grouped');
       addEntry(targetBoat, e);
       return true;
     }
     return false;
   }
 
-  // Allocate each unit (no splitting)
   for(const unit of units){
     const cands = candidateBoatsFor(unit);
     let placed=false;
-    // try candidates with ripple depth up to 4
     for(const i of cands){
       if(placeOrRippleUnit(unit, i, 4)){ placed=true; break; }
     }
     if(!placed){
-      // last resort: put in least-bad legal boat, even if it overfills (flag)
       const t = sectionTargetIndex(unit.section, N);
       const fallback = cands.slice().sort((a,b)=>Math.abs(a-t)-Math.abs(b-t)||a-b)[0];
       if(fallback!=null){
         const e = entryFromRow(unit.rows[0], false, []);
         e.count = unit.num; e.row = { ...unit.rows[0], _unit:true, _members:unit.rows };
+        if(unit.rows.length>1) e.highlights.add('*TW* grouped');
         e.highlights.add('Overflow (over capacity)');
         addEntry(fallback, e);
-        placed=true;
       }else{
-        // If truly no legal boat (shouldn’t happen unless all boats illegal), drop on latest and flag hard
         const i = N-1;
         const e = entryFromRow(unit.rows[0], false, []);
         e.count = unit.num; e.row = { ...unit.rows[0], _unit:true, _members:unit.rows };
+        if(unit.rows.length>1) e.highlights.add('*TW* grouped');
         e.highlights.add('Forced placement (rule conflict)');
         addEntry(i, e);
       }
     }
   }
 
-  /* ========== Render output (everyone allocated) ========== */
+  /* ========== Render output (no *TW* GROUP header) ========== */
   const results = el('results'); results.innerHTML='';
   let total=0, totalEffCap=0;
   B.forEach((b,idx)=>{ total+=b.count; totalEffCap+=eff(b); });
@@ -645,7 +616,6 @@ function allocate(){
     if(dropped>0) pushMsg(`Ignored ${dropped} row(s) due to Weather Hold/Charter.`,'warn');
   }
 
-  // Boats listing
   B.forEach((b,idx)=>{
     const head=document.createElement('div');
     head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
@@ -677,24 +647,10 @@ function allocate(){
       out.push([b.name,idx+1,b.hold,tagStr,'SEAT HOLD',b.hold,'','','','','Hold','Seats reserved; not for allocation','']);
     }
 
-    // Expand unit entries to their rows when exporting/visible (keeps groups together on the same boat)
     let rowNumber = 0;
     b.pax.forEach(entry=>{
       const rowsToShow = entry.row && entry.row._unit ? entry.row._members : [entry.row];
-      const membersCount = rowsToShow.reduce((s,x)=>s+(x.num||1),0);
-      // When a unit contains multiple rows, show a header line and then members
-      if(rowsToShow.length>1){
-        const tr=document.createElement('tr');
-        tr.innerHTML = `
-          <td>${++rowNumber}</td>
-          <td><b>*TW* GROUP</b></td>
-          <td>${membersCount}</td>
-          <td></td><td></td><td></td>
-          <td>${[...entry.tags].map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
-          <td>${[...entry.highlights].map(t=>`<span class="pill warn">${escapeHtml(t)}</span>`).join(' ')}</td>`;
-        tb.appendChild(tr);
-        out.push([b.name,idx+1,b.hold,tagStr,'*TW* GROUP',membersCount,'','','','',[...entry.tags].join('; '),[...entry.highlights].join('; '),'']);
-      }
+      // Render only real passengers (no *TW* GROUP header)
       for(const r of rowsToShow){
         const tr=document.createElement('tr');
         tr.innerHTML = `
