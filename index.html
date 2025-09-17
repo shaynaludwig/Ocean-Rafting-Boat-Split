@@ -1,20 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head> 
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Ocean Rafting — Boat Split</title>
-
-<!-- pdf.js for PDF input (text-based PDFs only) -->
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.js"></script>
-<script>
-  // point pdf.js to its worker
-  if (window['pdfjsLib']) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.js';
-  }
-</script>
-
 <style>
   :root{
     --bg:#ffffff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --panel:#ffffff;
@@ -79,18 +69,16 @@
 <body>
 <header>
   <h1>Boat Split</h1>
-  <p>Upload CSV/PDF → tag boats (DDI / Fly / EE) → remove boats (×) → Allocate → Download CSV</p>
+  <p>Upload CSV → tag boats (DDI / Fly / EE) → remove boats (×) → Allocate → Download CSV</p>
 </header>
 
 <main class="container" id="app">
   <div class="section">
     <div class="section-title">Upload file</div>
-    <input type="file" id="file" accept=".csv,.pdf,application/pdf" />
+    <input type="file" id="file" accept=".csv" />
     <div class="muted" style="margin-top:6px">
       Columns expected (flexible names): <span class="mono chip">Client</span> <span class="mono chip">No. Pass.</span>
       <span class="mono chip">P/U Point</span> <span class="mono chip">Time</span> <span class="mono chip">Pickup Notes</span>
-      <span class="mono chip">Phone</span>
-      <div style="margin-top:4px">PDF support is beta and works best with text-based, table-like PDFs (not scans).</div>
     </div>
   </div>
 
@@ -120,7 +108,7 @@
 
   <div class="section">
     <div class="section-title">Results</div>
-    <div id="results" class="muted">Upload a CSV/PDF and click <b>Allocate</b>.</div>
+    <div id="results" class="muted">Upload a CSV and click <b>Allocate</b>.</div>
   </div>
 </main>
 
@@ -179,6 +167,8 @@ function parseCSV(text){
     cur+=ch; i++;
   }
   row.push(cur); rows.push(row);
+
+  // Remove any rows that are entirely empty cells (blank lines anywhere in file)
   return rows.filter(r => r.some(c => norm(c) !== ''));
 }
 const COL_ALIASES = {
@@ -300,14 +290,14 @@ function renderBoats(){
 /* ========= Allocation ========= */
 function allocate(){
   clearMsgs(); popups = [];
-  if(!rows.length){ setStatus('Please upload a CSV/PDF first.'); return; }
+  if(!rows.length){ setStatus('Please upload a CSV first.'); return; }
   if(!boats.length){ setStatus('No boats in use. Click "Reset boats".'); return; }
 
   const B = boats.map(b=>({
     name:b.name,seats:b.seats,toilet:b.toilet,
     tagDDI:!!b.tagDDI, tagFly:!!b.tagFly, tagEE:!!b.tagEE,
     hold: Math.max(0,Math.min(b.hold||0,b.seats)),
-    pax:[], count:0, twGroups:new Set(), mapGroupCount:0
+    pax:[], count:0, twGroups:new Set()
   }));
   const eff = b => Math.max(0,b.seats-b.hold);
   const edges = edgeOrder(B.length);
@@ -336,7 +326,6 @@ function allocate(){
   const earlyBoat = r => /early\s*boat/i.test(r.notes||'');
   const charter = r => /charter/i.test(r.pu);
   const wHoldName = r => /\bweather\s*hold\b/i.test(r.clientRaw);
-  const isMAP = r => /\b(?:\*?MAP\*?|my\s*adv\s*proj)\b/i.test(r.clientRaw);
 
   // rows: remove WEATHER HOLD and charter, but record charter for warning
   const prepared = rows.slice();
@@ -402,7 +391,7 @@ function allocate(){
   if(flyNeed>flyCap) popups.push('Not enough space on Fly-Raft boat(s). Tag another Fly-Raft or redo run sheet.');
   for(const r of flyRows){
     if(!unassigned.has(r)) continue; const need=r.num||1; let placed=false;
-    for(const {i} of flyBoats.slice().reverse()){
+    for(const {i} of flyBoats.slice().reverse()){ // latest Fly first
       const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['F+R']); unassigned.delete(r); placed=true; break; }
     }
   }
@@ -422,9 +411,9 @@ function allocate(){
       const donorIsDDI = entry.tags.has('DDI') || isDDI(row);
       const donorIsFR  = entry.tags.has('F+R') || (/\(\s*F\s*\+\s*R\s*\)/i.test(row.clientRaw) || row.flyFromCount || noteFly(row));
       const donorIsTW  = Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped'));
-      const donorIsMAP = Array.from(entry.highlights||[]).some(h => h.includes('MAP grouped'));
+      // Only move donors LATER than (or equal to) the reference section rank
       if(donorRank >= refRank) continue;
-      if(donorIsDDI || donorIsTW || donorIsMAP) continue; // never move protected groups
+      if(donorIsDDI || donorIsTW) continue; // never move DDI or grouped TW
       for(const j of laterIdx){
         const land = B[j];
         if(land.tagDDI) continue;
@@ -461,6 +450,7 @@ function allocate(){
     const need = group.reduce((s,r)=>s+(r.num||1),0);
     const anyFR = group.some(isFRRow);
     const ref = referenceMember(group);
+    // Candidate boats
     let candidates = [];
     if(anyFR){
       const flyIdx = tagOrder('Fly').map(x=>x.i);
@@ -489,6 +479,7 @@ function allocate(){
       popups.push(`*TW* group "${anchor}" could not fit on target boat(s)${anyFR?' (Fly-Raft)':''} even after swaps. Tag another boat, reduce holds, or adjust numbers.`);
       continue;
     }
+    // Remove existing placements for these rows (if any)
     for(let bi=0; bi<B.length; bi++){
       const p=B[bi].pax;
       for(let k=p.length-1; k>=0; k--){
@@ -502,57 +493,6 @@ function allocate(){
     }
     B[placedIdx].twGroups.add(anchor);
   }
-
-  /* ===== 3b) MAP GROUP (after TW) ===== */
-  (function(){
-    const mapGroup = filtered.filter(r => isMAP(r) && unassigned.has(r));
-    if(!mapGroup.length) return;
-    const need = mapGroup.reduce((s,r)=>s+(r.num||1),0);
-    const anyFR = mapGroup.some(isFRRow);
-    const anyDDI = mapGroup.some(isDDIRow);
-    const ref = referenceMember(mapGroup);
-
-    let candidates = [];
-    if(anyDDI){
-      const ddiIdx = tagOrder('DDI').map(x=>x.i);
-      if(!ddiIdx.length){ popups.push('MAP group includes DDI pax but no DDI boat is tagged.'); return; }
-      candidates = (ref && (ref.section==='1st'||ref.section==='2nd')) ? ddiIdx.slice() : ddiIdx.slice().reverse();
-    } else if(anyFR){
-      const flyIdx = tagOrder('Fly').map(x=>x.i);
-      if(!flyIdx.length){ popups.push('MAP group requires Fly-Raft but no Fly boat is tagged.'); return; }
-      candidates = (ref && (ref.section==='1st'||ref.section==='2nd')) ? flyIdx.slice() : flyIdx.slice().reverse();
-    } else {
-      const notDDI = edges.filter(i=>!B[i].tagDDI);
-      if(ref && (ref.section==='1st'||ref.section==='2nd')){
-        const last = edges[1] ?? (B.length-1);
-        candidates = notDDI.filter(i=>i!==last);
-      } else if(ref && (ref.section==='3rd'||ref.section==='4th')){
-        candidates = notDDI.slice().reverse();
-      } else {
-        candidates = notDDI.slice(1);
-      }
-    }
-
-    let placedIdx = null;
-    for(const i of candidates){
-      const b = B[i];
-      const capLeft = eff(b) - b.count;
-      if(capLeft >= need){ placedIdx = i; break; }
-      const ok = tryMakeRoomWithSwap(i, need - capLeft, ref ? ref.section : 'Unknown', anyFR);
-      if(ok){ placedIdx = i; break; }
-    }
-    if(placedIdx==null){
-      popups.push('MAP group could not fit on target boat(s) even after swaps. Consider freeing capacity or tagging another compatible boat.');
-      return;
-    }
-
-    for(const r of mapGroup){
-      const tags=[]; if(isFRRow(r)) tags.push('F+R'); if(isEE(r)) tags.push('EE'); if(isDDIRow(r)) tags.push('DDI'); tags.push('MAP');
-      addPax(placedIdx, r, tags, ['MAP grouped']);
-      unassigned.delete(r);
-    }
-    B[placedIdx].mapGroupCount += need;
-  })();
 
   /* ===== 4) EE ===== */
   let eeBoats = tagOrder('EE');
@@ -603,7 +543,7 @@ function allocate(){
     if(placed) unassigned.delete(r);
   });
 
-  /* ===== 6) FINAL FIT — swap pass for any remainder ===== */
+  /* ===== 6) FINAL FIT — general swap pass for remaining ===== */
   const still = [...unassigned];
   for(const r of still){
     const need=r.num||1;
@@ -620,7 +560,7 @@ function allocate(){
   /* ===== Render output ===== */
   const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
   const results = el('results'); results.innerHTML='';
-  let grandTotal=0, totalEffCap=0;
+  let total=0, totalEffCap=0;
 
   if(ignoredCharter.length){
     const warn=document.createElement('div');
@@ -631,7 +571,7 @@ function allocate(){
   }
 
   B.forEach((b,idx)=>{
-    grandTotal+=b.count; totalEffCap+=eff(b);
+    total+=b.count; totalEffCap+=eff(b);
     const boatTags=[b.tagDDI?'DDI':'', b.tagFly?'Fly-Raft':'', b.tagEE?'EE':''].filter(Boolean).join('; ');
     const head=document.createElement('div');
     head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
@@ -642,7 +582,6 @@ function allocate(){
         ${b.tagFly?'<span class="chip">Fly-Raft</span>':''}
         ${b.tagEE?'<span class="chip">EE</span>':''}
         ${b.twGroups.size?`<span class="chip">TW groups: ${b.twGroups.size}</span>`:''}
-        ${b.mapGroupCount?`<span class="chip">MAP pax: ${b.mapGroupCount}</span>`:''}
         ${b.toilet?'<span class="chip">🚻</span>':''}
       </div>`;
     results.appendChild(head);
@@ -683,14 +622,15 @@ function allocate(){
     results.appendChild(table);
   });
 
-  /* ===== Overflow / Holding boat ===== */
+  /* ===== Overflow / Holding boat (ensures every booking is present) ===== */
   const overflow = [...unassigned];
   if(overflow.length){
+    const style = { name:'Overflow (Review)', pillClass:'bad', tip:'Unplaced — adjust holds/tags or add boat' };
     const head=document.createElement('div');
     head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
     head.style.margin='12px 0 6px';
-    head.innerHTML = `<div><b>⚠ Overflow (Review)</b> &nbsp; <span class="pill bad">${overflow.reduce((s,r)=>s+(r.num||1),0)} pax</span></div>
-      <div class="chips"><span class="chip">Unplaced — adjust holds/tags or add boat</span></div>`;
+    head.innerHTML = `<div><b>⚠ ${style.name}</b> &nbsp; <span class="pill ${style.pillClass}">${overflow.reduce((s,r)=>s+(r.num||1),0)} pax</span></div>
+      <div class="chips"><span class="chip">${style.tip}</span></div>`;
     results.appendChild(head);
 
     const table=document.createElement('table');
@@ -703,7 +643,6 @@ function allocate(){
       if(isDDI(r)) tags.push('DDI');
       if(hasFR(r)) tags.push('F+R');
       if(isEE(r))  tags.push('EE');
-      if(isMAP(r)) tags.push('MAP');
       const tr=document.createElement('tr');
       tr.innerHTML = `
         <td>${i+1}</td>
@@ -723,7 +662,7 @@ function allocate(){
   const summary=document.createElement('div'); summary.className='status';
   summary.style.margin='10px 0 0';
   const totalOverflow = overflow.reduce((s,r)=>s+(r.num||1),0);
-  summary.innerHTML = `Total allocated: <b>${grandTotal}</b> / Effective capacity: <b>${totalEffCap}</b>${grandTotal>totalEffCap?' <span class="pill bad">Over capacity</span>':''}
+  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}
   ${totalOverflow?` — Overflow (review): <b>${totalOverflow}</b>`:''}`;
   results.prepend(summary);
 
@@ -743,112 +682,63 @@ function allocate(){
   if(popups.length) alert(popups.join('\n\n'));
 }
 
-/* ========= File loaders ========= */
-async function pdfToGuessedCSVText(file){
-  if(!window['pdfjsLib']) throw new Error('pdf.js not loaded');
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
-  let lines = [];
-  for(let p=1;p<=pdf.numPages;p++){
-    const page = await pdf.getPage(p);
-    const content = await page.getTextContent();
-    const items = content.items.map(it => ({text: it.str, x: Math.round(it.transform[4]), y: Math.round(it.transform[5])}));
-    const byY = new Map();
-    for(const it of items){
-      const key = it.y; if(!byY.has(key)) byY.set(key, []);
-      byY.get(key).push(it);
-    }
-    const ys = [...byY.keys()].sort((a,b)=>b-a); // top→bottom
-    ys.forEach(y=>{
-      const row = byY.get(y).sort((a,b)=>a.x-b.x).map(it=>it.text).join(' ').trim();
-      if(row) lines.push(row);
-    });
-  }
-  // Heuristic: convert runs of 2+ spaces into commas
-  const csvGuess = lines.map(line => line.replace(/\s{2,}/g, ',')).join('\n');
-  return csvGuess;
-}
-
-async function loadFile(e){
-  clearMsgs(); popups=[]; ignoredCharter = [];
-  const f=e.target.files?.[0]; if(!f) return;
-
-  let raw;
-  if((f.type && f.type.toLowerCase().includes('pdf')) || f.name.toLowerCase().endsWith('.pdf')){
-    try{
-      setStatus('Reading PDF (beta)…');
-      const text = await pdfToGuessedCSVText(f);
-      raw = parseCSV(text);
-      pushMsg(`Parsed PDF (beta): ${raw.length-1} row(s)`, 'ok');
-    }catch(err){
-      setStatus('Could not parse PDF. Please upload a CSV instead.');
-      const host = document.querySelector('#results');
-      const pre = document.createElement('div');
-      pre.className='err';
-      pre.textContent='PDF parse error (beta): '+(err&&err.message?err.message:String(err));
-      host?.prepend(pre);
-      return;
-    }
-  }else{
-    const text = await f.text();
-    raw = parseCSV(text);
-  }
-
-  if(!raw.length){ setStatus('Empty file.'); return; }
-  const header = raw[0].map(h=>h.trim());
-  const data = raw.slice(1);
-
-  const idxClient=findColIndex(header,COL_ALIASES.client);
-  const idxNum   =findColIndex(header,COL_ALIASES.num);
-  const idxPU    =findColIndex(header,COL_ALIASES.pu);
-  const idxTime  =findColIndex(header,COL_ALIASES.time);
-  const idxNotes =findColIndex(header,COL_ALIASES.notes);
-  const idxPhone =findColIndex(header,COL_ALIASES.phone);
-
-  if(idxClient<0 || idxPU<0){
-    setStatus('Missing required columns: need at least Client and P/U Point.');
-    return;
-  }
-
-  const prepared = data
-    .filter(r => r.some(c => norm(c) !== ''))
-    .map(r=>{
-      const clientRaw = norm(r[idxClient]);
-      const numRaw = (r[idxNum]??'').toString();
-      const FRfromCount  = /\(\s*F\s*\+\s*R\s*\)/i.test(numRaw);
-      const FRfromClient = /\(\s*F\s*\+\s*R\s*\)/i.test(clientRaw);
-      const FRfromNotes  = /\(\s*F\s*\+\s*R\s*\)/i.test(norm(idxNotes>=0?r[idxNotes]:'')); 
-      const flyFromAny   = FRfromCount || FRfromClient || FRfromNotes;
-
-      const numMatch = numRaw.match(/\d+/);
-      const num = Math.max(1, numMatch ? parseInt(numMatch[0],10) : 1);
-
-      const pu   = norm(r[idxPU]);
-      const time = norm(idxTime>=0?r[idxTime]:'');
-      const notes= norm(idxNotes>=0?r[idxNotes]:'');
-      const phone= norm(idxPhone>=0?r[idxPhone]:'');
-      const timeMins = parseTimeToSortable(time);
-
-      return { clientRaw, num, pu, time, timeMins, notes, phone, flyFromCount: flyFromAny };
-    });
-
-  ignoredCharter = prepared.filter(x=>/charter/i.test(x.pu));
-  rows = prepared.filter(x=>!/charter/i.test(x.pu) && !/\bweather\s*hold\b/i.test(x.clientRaw));
-
-  if(ignoredCharter.length){
-    pushMsg(`Ignored ${ignoredCharter.length} charter booking(s). Ensure charter boat is not used.`,`warn`);
-  }
-
-  el('results').innerHTML='<span class="muted">File loaded. Configure boats, then <b>Allocate</b>.</span>';
-  el('download').disabled=true;
-  setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready. (v=MAP-group+PDF-beta)`);
-}
-
 /* ========= Wiring ========= */
 function wire(){
   el('resetBoats').onclick=()=>{ boats=cloneBoats(); renderBoats(); setStatus('Boats reset.'); };
   el('run').onclick=allocate;
-  el('file').addEventListener('change', loadFile);
+
+  el('file').addEventListener('change', async e=>{
+    clearMsgs(); popups=[]; ignoredCharter = [];
+    const f=e.target.files?.[0]; if(!f) return;
+    const text = await f.text();
+    const raw = parseCSV(text);
+    if(!raw.length){ setStatus('Empty CSV.'); return; }
+
+    const header = raw[0].map(h=>h.trim());
+    const data = raw.slice(1);
+
+    const idxClient=findColIndex(header,COL_ALIASES.client);
+    const idxNum   =findColIndex(header,COL_ALIASES.num);
+    const idxPU    =findColIndex(header,COL_ALIASES.pu);
+    const idxTime  =findColIndex(header,COL_ALIASES.time);
+    const idxNotes =findColIndex(header,COL_ALIASES.notes);
+    const idxPhone =findColIndex(header,COL_ALIASES.phone);
+
+    if(idxClient<0 || idxPU<0){ setStatus('Missing required columns: need at least Client and P/U Point.'); return; }
+
+    const prepared = data
+      .filter(r => r.some(c => norm(c) !== '')) // ignore blank rows anywhere
+      .map(r=>{
+        const clientRaw = norm(r[idxClient]);
+        const numRaw = (r[idxNum]??'').toString();
+        const FRfromCount  = /\(\s*F\s*\+\s*R\s*\)/i.test(numRaw);
+        const FRfromClient = /\(\s*F\s*\+\s*R\s*\)/i.test(clientRaw);
+        const FRfromNotes  = /\(\s*F\s*\+\s*R\s*\)/i.test(norm(idxNotes>=0?r[idxNotes]:'')); 
+        const flyFromAny   = FRfromCount || FRfromClient || FRfromNotes;
+
+        const numMatch = numRaw.match(/\d+/);
+        const num = Math.max(1, numMatch ? parseInt(numMatch[0],10) : 1);
+
+        const pu   = norm(r[idxPU]);
+        const time = norm(idxTime>=0?r[idxTime]:'');
+        const notes= norm(idxNotes>=0?r[idxNotes]:'');
+        const phone= norm(idxPhone>=0?r[idxPhone]:'');
+        const timeMins = parseTimeToSortable(time);
+
+        return { clientRaw, num, pu, time, timeMins, notes, phone, flyFromCount: flyFromAny };
+      });
+
+    ignoredCharter = prepared.filter(x=>/charter/i.test(x.pu));
+    rows = prepared.filter(x=>!/charter/i.test(x.pu) && !/\bweather\s*hold\b/i.test(x.clientRaw));
+
+    if(ignoredCharter.length){
+      pushMsg(`Ignored ${ignoredCharter.length} charter booking(s). Ensure charter boat is not used.`,`warn`);
+    }
+
+    el('results').innerHTML='<span class="muted">File loaded. Configure boats, then <b>Allocate</b>.</span>';
+    el('download').disabled=true;
+    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready. (v=overflow-swap-pass)`);
+  });
 }
 
 /* ========= Boot ========= */
@@ -857,7 +747,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus('Ready. (v=MAP-group+PDF-beta)');
+    setStatus('Ready. (v=overflow-swap-pass)');
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
