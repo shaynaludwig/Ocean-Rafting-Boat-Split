@@ -93,7 +93,7 @@
       <button id="run" class="btn btn-primary">Allocate</button>
       <button id="download" class="btn" disabled>Download CSV</button>
     </div>
-    <div id="status" class="muted" style="margin-top:10px">Booting…</div>
+    <div id="status" class="muted" style="margin-top:10px">Booting...</div>
     <div id="messages" class="chips" style="margin-top:10px"></div>
   </div>
 
@@ -112,35 +112,52 @@
 </main>
 
 <script>
-"use strict";
-
-/* ========= Error banner ========= */
-window.onerror = (msg, src, line, col, err) => {
-  const host = document.querySelector('#results');
-  const pre = document.createElement('div');
-  pre.className = 'err';
-  pre.textContent = `Script error:\n${msg}\n${src?('at '+src+':'+line+':'+col):''}\n` + (err&&err.stack?err.stack:'');
-  host?.prepend(pre);
-};
+/* ===== Error banner so init errors show up in-page ===== */
+(function(){
+  var prev = window.onerror;
+  window.onerror = function(msg, src, line, col, err){
+    try{
+      var host = document.getElementById('results');
+      if(host){
+        var pre = document.createElement('div');
+        pre.className = 'err';
+        pre.textContent = 'Script error:\n' + msg + '\n' + (src?('at '+src+':'+line+':'+col):'') + '\n' + (err && err.stack ? err.stack : '');
+        host.prepend(pre);
+      }
+    }catch(_){}
+    if(prev) return prev(msg, src, line, col, err);
+  };
+})();
 
 /* ========= Helpers ========= */
-const el = id => document.getElementById(id);
-const setStatus = s => { const n=el('status'); if(n) n.textContent = s; };
-const messagesEl = document.getElementById('messages');
-function clearMsgs(){ if(messagesEl) messagesEl.innerHTML=''; }
-function pushMsg(text,tone=''){
-  if(!messagesEl) return;
-  const m=document.createElement('span'); m.className='chip';
-  const col = tone==='ok'?'#16a34a':tone==='warn'?'#f59e0b':tone==='bad'?'#ef4444':'#c7d2fe';
+function el(id){ return document.getElementById(id); }
+function setStatus(s){ var n=el('status'); if(n) n.textContent = s; }
+function pushMsg(text,tone){
+  var messagesEl=document.getElementById('messages'); if(!messagesEl) return;
+  var m=document.createElement('span'); m.className='chip';
+  var col = tone==='ok'?'#16a34a':tone==='warn'?'#f59e0b':tone==='bad'?'#ef4444':'#c7d2fe';
   m.style.borderColor=col; m.textContent=text; messagesEl.appendChild(m);
 }
-function norm(s){ return (s??'').toString().trim(); }
-function escapeHtml(s){ return (s??'').replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m])); }
-function edgeOrder(n){ const res=[]; for(let a=0,b=n-1;a<=b;a++,b--){ res.push(a); if(b>a) res.push(b);} return res; }
-function sectionRank(s){ return {'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 0; }
+function clearMsgs(){ var messagesEl=document.getElementById('messages'); if(messagesEl) messagesEl.innerHTML=''; }
+function norm(s){ return (s==null?'':String(s)).trim(); }
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g,function(m){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]; }); }
+function edgeOrder(n){ var res=[]; for(var a=0,b=n-1;a<=b;a++,b--){ res.push(a); if(b>a) res.push(b);} return res; }
+function sectionRank(s){ var map={'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}; return map[s]||0; }
+function boatStyleForName(name){
+  var n=(name||'').toLowerCase();
+  if(n.indexOf('joyride')>-1)       return { bg:'#ddd6fe', fg:'#1f2937', br:'#c4b5fd' };
+  if(n.indexOf('black betty')>-1)   return { bg:'#111827', fg:'#ffffff', br:'#0b0f1a' };
+  if(n.indexOf('thunderstruck')>-1) return { bg:'#fecaca', fg:'#1f2937', br:'#fca5a5' };
+  if(n.indexOf('wipeout')>-1)       return { bg:'#ffffff', fg:'#111827', br:'#e5e7eb' };
+  if(n.indexOf('thrilla')>-1)       return { bg:'#fef3c7', fg:'#1f2937', br:'#fde68a' };
+  if(n.indexOf('jammin')>-1)        return { bg:'#dcfce7', fg:'#1f2937', br:'#bbf7d0' };
+  if(n.indexOf('wildthing')>-1)     return { bg:'#dbeafe', fg:'#1f2937', br:'#bfdbfe' };
+  if(n.indexOf('riptide')>-1)       return { bg:'#f1f5f9', fg:'#1f2937', br:'#e2e8f0' };
+  return { bg:'#ffffff', fg:'#111827', br:'#e5e7eb' };
+}
 
 /* ========= Defaults ========= */
-const DEFAULT_BOATS = [
+var DEFAULT_BOATS = [
   { name: "Joyride",        seats: 32, toilet: true },
   { name: "Thunderstruck",  seats: 32, toilet: true },
   { name: "Black Betty",    seats: 32, toilet: true },
@@ -148,28 +165,38 @@ const DEFAULT_BOATS = [
   { name: "Riptide",        seats: 32, toilet: true },
   { name: "Thrilla",        seats: 25, toilet: false },
   { name: "Jammin",         seats: 22, toilet: true },
-  { name: "Wildthing",      seats: 19, toilet: false },
+  { name: "Wildthing",      seats: 19, toilet: false }
 ];
-let boats = [];
-let rows = [];
-let ignoredCharter = [];
-let popups = [];
+
+var boats = [];
+var rows = [];
+var ignoredCharter = [];
+var popups = [];
 
 /* ========= CSV parsing ========= */
 function parseCSV(text){
-  const rows=[]; let cur='',row=[],inQ=false; let i=0;
-  while(i<text.length){ const ch=text[i];
-    if(inQ){ if(ch==='"'){ if(text[i+1]==='"'){cur+='"';i+=2;continue} inQ=false;i++;continue } cur+=ch; i++; continue; }
-    if(ch==='"'){ inQ=true; i++; continue; }
-    if(ch===','){ row.push(cur); cur=''; i++; continue; }
-    if(ch==='\r'){ i++; continue; }
-    if(ch==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; i++; continue; }
-    cur+=ch; i++;
+  var res=[], cur='', row=[], inQ=false, i=0, ch;
+  while(i<text.length){
+    ch=text[i];
+    if(inQ){
+      if(ch === '"'){
+        if(text[i+1] === '"'){ cur += '"'; i+=2; continue; }
+        inQ=false; i++; continue;
+      }
+      cur += ch; i++; continue;
+    }
+    if(ch === '"'){ inQ=true; i++; continue; }
+    if(ch === ','){ row.push(cur); cur=''; i++; continue; }
+    if(ch === '\r'){ i++; continue; }
+    if(ch === '\n'){ row.push(cur); res.push(row); row=[]; cur=''; i++; continue; }
+    cur += ch; i++;
   }
-  row.push(cur); rows.push(row);
-  return rows.filter(r => r.some(c => norm(c) !== '')); // ignore blanks anywhere
+  row.push(cur); res.push(row);
+  // drop rows that are entirely blank (anywhere in file)
+  return res.filter(function(r){ for(var k=0;k<r.length;k++){ if(norm(r[k])!=='') return true; } return false; });
 }
-const COL_ALIASES = {
+
+var COL_ALIASES = {
   client:["client","name","full name","passenger","pax name"],
   num:["no. pass.","no pass","passengers","pax","qty","count"],
   pu:["p/u point","pickup point","p/u","pick up","pickup","location","p/u address","pickup address"],
@@ -177,108 +204,100 @@ const COL_ALIASES = {
   notes:["pickup notes","notes","comments","pu comments","p/u notes"],
   phone:["phone","mobile"]
 };
+
 function findColIndex(h,keys){
-  const lower=h.map(x=>x.toLowerCase());
-  for(const k of keys){ const i=lower.indexOf(k); if(i!==-1) return i; }
-  for(let i=0;i<lower.length;i++){ if(keys.some(k=>lower[i].includes(k))) return i; }
+  var lower=h.map(function(x){ return String(x).toLowerCase(); });
+  for(var k=0;k<keys.length;k++){ var idx=lower.indexOf(keys[k]); if(idx!==-1) return idx; }
+  for(var i=0;i<lower.length;i++){
+    for(var j=0;j<keys.length;j++){ if(lower[i].indexOf(keys[j])>-1) return i; }
+  }
   return -1;
 }
+
 function parseTimeToSortable(t){
-  if(!t) return null; let s=t.toString().trim(); if(!s) return null;
-  s=s.replace('.',':'); const ampm=/am|pm/i.test(s)?s.match(/am|pm/i)[0].toLowerCase():null;
-  s=s.replace(/[^0-9:]/g,''); if(/^\d{3,4}$/.test(s)){ s=(s.length===3?'0'+s:s); s=s.slice(0,2)+':'+s.slice(2); }
+  if(!t) return null; var s=String(t).trim(); if(!s) return null;
+  s=s.replace('.',':');
+  var ampm=null, m=s.match(/am|pm/i); if(m) ampm=m[0].toLowerCase();
+  s=s.replace(/[^0-9:]/g,'');
+  if(/^\d{3,4}$/.test(s)){ if(s.length===3) s='0'+s; s=s.slice(0,2)+':'+s.slice(2); }
   if(!/^\d{1,2}:\d{2}$/.test(s)) return null;
-  let [hh,mm]=s.split(':').map(n=>parseInt(n,10)); if(ampm){ if(ampm==='pm'&&hh<12)hh+=12; if(ampm==='am'&&hh===12)hh=0; }
-  if(hh>=0&&hh<24&&mm>=0&&mm<60) return hh*60+mm; return null;
+  var hh=parseInt(s.split(':')[0],10), mm=parseInt(s.split(':')[1],10);
+  if(ampm){ if(ampm==='pm'&&hh<12)hh+=12; if(ampm==='am'&&hh===12)hh=0; }
+  if(hh>=0&&hh<24&&mm>=0&&mm<60) return hh*60+mm;
+  return null;
 }
+
 function quartileSection(mins, sortedDistinct){
-  if(mins==null) return 'Unknown'; const n=sortedDistinct.length; if(!n) return 'Unknown';
-  const q1=sortedDistinct[Math.floor(n*.25)], q2=sortedDistinct[Math.floor(n*.50)], q3=sortedDistinct[Math.floor(n*.75)];
+  if(mins==null) return 'Unknown';
+  var n=sortedDistinct.length; if(!n) return 'Unknown';
+  var q1=sortedDistinct[Math.floor(n*.25)], q2=sortedDistinct[Math.floor(n*.50)], q3=sortedDistinct[Math.floor(n*.75)];
   if(mins<=q1) return '1st'; if(mins<=q2) return '2nd'; if(mins<=q3) return '3rd'; return '4th';
 }
 
-/* ========= Boat colors ========= */
-function boatStyleForName(name){
-  const n=(name||'').toLowerCase();
-  if(n.includes('joyride'))       return { bg:'#ddd6fe', fg:'#1f2937', br:'#c4b5fd' };
-  if(n.includes('black betty'))   return { bg:'#111827', fg:'#ffffff', br:'#0b0f1a' };
-  if(n.includes('thunderstruck')) return { bg:'#fecaca', fg:'#1f2937', br:'#fca5a5' };
-  if(n.includes('wipeout'))       return { bg:'#ffffff', fg:'#111827', br:'#e5e7eb' };
-  if(n.includes('thrilla'))       return { bg:'#fef3c7', fg:'#1f2937', br:'#fde68a' };
-  if(n.includes('jammin'))        return { bg:'#dcfce7', fg:'#1f2937', br:'#bbf7d0' };
-  if(n.includes('wildthing'))     return { bg:'#dbeafe', fg:'#1f2937', br:'#bfdbfe' };
-  if(n.includes('riptide'))       return { bg:'#f1f5f9', fg:'#1f2937', br:'#e2e8f0' };
-  return { bg:'#ffffff', fg:'#111827', br:'#e5e7eb' };
-}
-
 /* ========= Boats UI ========= */
-function cloneBoats(){ return DEFAULT_BOATS.map(b=>({...b, tagDDI:false, tagFly:false, tagEE:false, hold:0 })); }
+function cloneBoats(){ return DEFAULT_BOATS.map(function(b){ return {name:b.name,seats:b.seats,toilet:b.toilet,tagDDI:false,tagFly:false,tagEE:false,hold:0}; }); }
 
 function renderBoats(){
-  const wrap = document.getElementById('boats');
+  var wrap = document.getElementById('boats');
   if (!wrap) { setStatus('Boats container missing.'); return; }
   try{
     wrap.innerHTML='';
     if(!boats || !Array.isArray(boats)) boats = [];
     if(!boats.length) boats = cloneBoats();
 
-    boats.forEach((b,idx)=>{
-      const style = boatStyleForName(b.name);
-      const box=document.createElement('div'); box.className='boat';
-      box.style.background = style.bg;
-      box.style.color = style.fg;
-      box.style.borderColor = style.br;
-
-      box.innerHTML=`
-        <div class="just">
-          <div>
-            <h4 style="color:${style.fg}">${idx+1}. ${b.name} ${b.toilet?'🚻':''}</h4>
-            <div style="font-size:12px; color:${style.fg}">${b.seats} seats${b.toilet?', toilet':''}</div>
-          </div>
-          <div class="controls-inline">
-            <button class="btn" data-act="up" data-idx="${idx}" title="Earlier">▲</button>
-            <button class="btn" data-act="down" data-idx="${idx}" title="Later">▼</button>
-            <button class="btn btn-danger" data-act="remove" data-idx="${idx}" title="Remove boat">×</button>
-          </div>
-        </div>
-        <div class="row row-tight" style="margin-top:8px; align-items:center">
-          <div class="tagline" style="display:flex; gap:10px; flex-wrap:wrap">
-            <label><input type="checkbox" data-act="ddi" data-idx="${idx}" ${b.tagDDI?'checked':''}/> DDI</label>
-            <label><input type="checkbox" data-act="fly" data-idx="${idx}" ${b.tagFly?'checked':''}/> Fly-Raft</label>
-            <label><input type="checkbox" data-act="ee"  data-idx="${idx}" ${b.tagEE?'checked':''}/> EE</label>
-          </div>
-          <div style="flex:1"></div>
-          <label style="margin:0; flex:0 0 160px">Hold seats
-            <input type="number" data-act="hold" data-idx="${idx}" min="0" max="${b.seats}" value="${b.hold||0}" />
-          </label>
-        </div>
-      `;
+    boats.forEach(function(b,idx){
+      var style = boatStyleForName(b.name);
+      var box=document.createElement('div'); box.className='boat';
+      box.style.background = style.bg; box.style.color = style.fg; box.style.borderColor = style.br;
+      box.innerHTML =
+        '<div class="just">'+
+          '<div>'+
+            '<h4 style="color:'+style.fg+'">'+(idx+1)+'. '+b.name+' '+(b.toilet?'🚻':'')+'</h4>'+
+            '<div style="font-size:12px; color:'+style.fg+'">'+b.seats+' seats'+(b.toilet?', toilet':'')+'</div>'+
+          '</div>'+
+          '<div class="controls-inline">'+
+            '<button class="btn" data-act="up" data-idx="'+idx+'" title="Earlier">▲</button>'+
+            '<button class="btn" data-act="down" data-idx="'+idx+'" title="Later">▼</button>'+
+            '<button class="btn btn-danger" data-act="remove" data-idx="'+idx+'" title="Remove boat">×</button>'+
+          '</div>'+
+        '</div>'+
+        '<div class="row row-tight" style="margin-top:8px; align-items:center">'+
+          '<div class="tagline" style="display:flex; gap:10px; flex-wrap:wrap">'+
+            '<label><input type="checkbox" data-act="ddi" data-idx="'+idx+'" '+(b.tagDDI?'checked':'')+'/> DDI</label>'+
+            '<label><input type="checkbox" data-act="fly" data-idx="'+idx+'" '+(b.tagFly?'checked':'')+'/> Fly-Raft</label>'+
+            '<label><input type="checkbox" data-act="ee"  data-idx="'+idx+'" '+(b.tagEE?'checked':'')+'/> EE</label>'+
+          '</div>'+
+          '<div style="flex:1"></div>'+
+          '<label style="margin:0; flex:0 0 160px">Hold seats '+
+            '<input type="number" data-act="hold" data-idx="'+idx+'" min="0" max="'+b.seats+'" value="'+(b.hold||0)+'" />'+
+          '</label>'+
+        '</div>';
       wrap.appendChild(box);
     });
 
-    wrap.querySelectorAll('button').forEach(btn=>{
-      btn.onclick=()=>{
-        const idx=+btn.dataset.idx, act=btn.dataset.act;
-        if(act==='up'&&idx>0){ [boats[idx-1],boats[idx]]=[boats[idx],boats[idx-1]]; renderBoats(); }
-        if(act==='down'&&idx<boats.length-1){ [boats[idx+1],boats[idx]]=[boats[idx],boats[idx+1]]; renderBoats(); }
+    [].slice.call(wrap.querySelectorAll('button')).forEach(function(btn){
+      btn.onclick=function(){
+        var idx=+btn.getAttribute('data-idx'), act=btn.getAttribute('data-act');
+        if(act==='up'&&idx>0){ var t=boats[idx-1]; boats[idx-1]=boats[idx]; boats[idx]=t; renderBoats(); }
+        if(act==='down'&&idx<boats.length-1){ var t2=boats[idx+1]; boats[idx+1]=boats[idx]; boats[idx]=t2; renderBoats(); }
         if(act==='remove'){ boats.splice(idx,1); renderBoats(); setStatus('Boat removed.'); }
       };
     });
-    wrap.querySelectorAll('input').forEach(inp=>{
-      inp.onchange=()=>{
-        const idx=+inp.dataset.idx, act=inp.dataset.act;
+    [].slice.call(wrap.querySelectorAll('input')).forEach(function(inp){
+      inp.onchange=function(){
+        var idx=+inp.getAttribute('data-idx'), act=inp.getAttribute('data-act');
         if(act==='ddi'){ boats[idx].tagDDI=inp.checked; if(inp.checked) boats[idx].tagFly=false; }
         if(act==='fly'){ boats[idx].tagFly=inp.checked; if(inp.checked) boats[idx].tagDDI=false; }
         if(act==='ee'){ boats[idx].tagEE=inp.checked; }
         if(act==='hold'){
-          let v=parseInt(inp.value||'0',10); v=isNaN(v)?0:v;
-          v=Math.max(0,Math.min(v,boats[idx].seats)); boats[idx].hold=v; inp.value=String(v);
+          var v=parseInt(inp.value||'0',10); if(isNaN(v)) v=0;
+          if(v<0) v=0; if(v>boats[idx].seats) v=boats[idx].seats; boats[idx].hold=v; inp.value=String(v);
         }
         renderBoats();
       };
     });
   }catch(e){
-    const errBox=document.createElement('div');
+    var errBox=document.createElement('div');
     errBox.className='err';
     errBox.textContent='Boats render error: '+ (e && e.stack ? e.stack : String(e));
     wrap.parentElement.prepend(errBox);
@@ -291,145 +310,139 @@ function allocate(){
   if(!rows.length){ setStatus('Please upload a CSV first.'); return; }
   if(!boats.length){ setStatus('No boats in use. Click "Reset boats".'); return; }
 
-  const B = boats.map(b=>({
-    name:b.name,seats:b.seats,toilet:b.toilet,
-    tagDDI:!!b.tagDDI, tagFly:!!b.tagFly, tagEE:!!b.tagEE,
-    hold: Math.max(0,Math.min(b.hold||0,b.seats)),
-    pax:[], count:0, twGroups:new Set()
-  }));
-  const eff = b => Math.max(0,b.seats-b.hold);
-  const edges = edgeOrder(B.length);
-  const lastIdx = edges[1] ?? (B.length-1);
-  const edgeBoats = edges.map(i=>({i,b:B[i]}));
-  const tagOrder = tag => edgeBoats.filter(o=>o.b[`tag${tag}`]).sort((a,b)=>edges.indexOf(a.i)-edges.indexOf(b.i));
+  var B = boats.map(function(b){
+    return { name:b.name, seats:b.seats, toilet:b.toilet,
+      tagDDI:!!b.tagDDI, tagFly:!!b.tagFly, tagEE:!!b.tagEE,
+      hold: Math.max(0,Math.min(b.hold||0,b.seats)), pax:[], count:0, twGroups:new Set()
+    };
+  });
+  function eff(b){ return Math.max(0,b.seats-b.hold); }
+  var edges = edgeOrder(B.length);
+  var lastIdx = edges[1] != null ? edges[1] : (B.length-1);
+  var edgeBoats = edges.map(function(i){ return {i:i,b:B[i]}; });
+  function tagOrder(tag){ return edgeBoats.filter(function(o){ return !!o.b['tag'+tag]; }); }
   function sectionEdgeOrder(section){
-    if(section==='1st'||section==='2nd'){ const wl = edges.filter(i=>i!==lastIdx); return [...wl,lastIdx]; }
-    return edges;
+    if(section==='1st'||section==='2nd'){
+      var wl=edges.filter(function(i){ return i!==lastIdx; });
+      return wl.concat([lastIdx]);
+    }
+    return edges.slice();
   }
-  function addPax(i,r,tags=[],hl=[]){
-    const need=r.num||1; const b=B[i];
+  function addPax(i,r,tags,hl){
+    if(!tags) tags=[]; if(!hl) hl=[];
+    var need=r.num||1; var b=B[i];
     b.pax.push({row:r,count:need,tags:new Set(tags),highlights:new Set(hl)});
     b.count+=need;
   }
 
-  const distinct=[...new Set(rows.map(r=>r.timeMins).filter(v=>v!=null))].sort((a,b)=>a-b);
-  rows.forEach(r=>r.section = quartileSection(r.timeMins, distinct));
+  var distinct = rows.map(function(r){ return r.timeMins; }).filter(function(v){ return v!=null; }).sort(function(a,b){ return a-b; }).filter(function(v,i,a){ return !i || v!==a[i-1]; });
+  rows.forEach(function(r){ r.section = quartileSection(r.timeMins, distinct); });
 
-  // classification helpers
-  const isDDI   = r => /daydream\s*island/i.test(r.pu);
-  const isOwn   = r => /(own\s*way|tbc|not\s*sure|tba)/i.test(r.pu);
-  const isEE    = r => /\bee\b/i.test(r.notes||'');
-  const noteFly = r => /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||'');
-  const hasFR   = r => /\(\s*F\s*\+\s*R\s*\)/i.test(r.clientRaw) || r.flyFromCount || noteFly(r);
-  const earlyBoat = r => /early\s*boat/i.test(r.notes||'');
-  const charter = r => /charter/i.test(r.pu);
-  const wHoldName = r => /\bweather\s*hold\b/i.test(r.clientRaw);
+  // classifiers
+  function isDDI(r){ return /daydream\s*island/i.test(r.pu); }
+  function isOwn(r){ return /(own\s*way|tbc|not\s*sure|tba)/i.test(r.pu); }
+  function isEE(r){ return /\bee\b/i.test(r.notes||''); }
+  function noteFly(r){ return /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||''); }
+  function hasFR(r){ return /\(\s*F\s*\+\s*R\s*\)/i.test(r.clientRaw) || r.flyFromCount || noteFly(r); }
+  function earlyBoat(r){ return /early\s*boat/i.test(r.notes||''); }
+  function charter(r){ return /charter/i.test(r.pu); }
+  function wHoldName(r){ return /\bweather\s*hold\b/i.test(r.clientRaw); }
 
-  // rows: remove WEATHER HOLD and charter, but record charter for warning
-  const prepared = rows.slice();
-  ignoredCharter = prepared.filter(r=>charter(r));
-  const filtered = prepared.filter(r=>!wHoldName(r) && !charter(r));
-  const unassigned = new Set(filtered);
+  // prepare rows
+  var prepared = rows.slice();
+  ignoredCharter = prepared.filter(function(r){ return charter(r); });
+  var filtered = prepared.filter(function(r){ return !wHoldName(r) && !charter(r); });
+  var unassigned = new Set(filtered);
 
-  // ====== *TW* parsing/indexing ======
+  // *TW* indexing
   function baseName(clientRaw){ return norm(clientRaw.replace(/\*TW\*.*$/i,'')); }
-  function parseTW(row){ const m = row.clientRaw.match(/\*TW\*\s*(.+)$/i); return m?norm(m[1]):null; }
-  const byName = new Map();
-  filtered.forEach(r=>{
+  function parseTW(row){ var m = row.clientRaw.match(/\*TW\*\s*(.+)$/i); return m?norm(m[1]):null; }
+  var byName = new Map();
+  filtered.forEach(function(r){
     r.nameClean = baseName(r.clientRaw);
     r.twPartner = parseTW(r);
-    byName.set(r.nameClean, (byName.get(r.nameClean)||[]).concat([r]));
+    var arr = byName.get(r.nameClean) || [];
+    arr.push(r); byName.set(r.nameClean, arr);
   });
-  const twGroups = new Map(); const twErrors=[];
-  filtered.forEach(r=>{
+  var twGroups = new Map(); var twErrors=[];
+  filtered.forEach(function(r){
     if(!r.twPartner) return;
-    const anchor = norm(r.twPartner);
-    const partners = byName.get(anchor) || [];
-    if(partners.length===0){ twErrors.push(`*TW* reference not found: "${r.clientRaw}" → "${anchor}"`); return; }
-    if(partners.length>1){ twErrors.push(`*TW* ambiguous anchor: "${anchor}" — please disambiguate.`); return; }
-    const arr = twGroups.get(anchor)||[];
-    if(!arr.includes(partners[0])) arr.push(partners[0]);
-    if(!arr.includes(r)) arr.push(r);
+    var anchor = norm(r.twPartner);
+    var partners = byName.get(anchor) || [];
+    if(partners.length===0){ twErrors.push('*TW* reference not found: "'+r.clientRaw+'" → "'+anchor+'"'); return; }
+    if(partners.length>1){ twErrors.push('*TW* ambiguous anchor: "'+anchor+'" — please disambiguate.'); return; }
+    var arr = twGroups.get(anchor)||[];
+    if(arr.indexOf(partners[0])===-1) arr.push(partners[0]);
+    if(arr.indexOf(r)===-1) arr.push(r);
     twGroups.set(anchor, arr);
   });
   if(twErrors.length){ popups.push(twErrors.join('\n')); }
 
-  filtered.forEach(r=>{ if(isDDI(r)) r.section='1st'; if(hasFR(r)) r.section='Unknown'; });
+  filtered.forEach(function(r){ if(isDDI(r)) r.section='1st'; if(hasFR(r)) r.section='Unknown'; });
 
   /* ===== 1) DDI STRICT ===== */
-  let ddiBoats = tagOrder('DDI');
-  const ddiRows = filtered.filter(isDDI);
+  var ddiBoats = tagOrder('DDI');
+  var ddiRows = filtered.filter(isDDI);
   if(ddiRows.length && ddiBoats.length===0 && B.length){
     B[0].tagDDI=true; ddiBoats=tagOrder('DDI'); pushMsg('Auto-tagged earliest boat as DDI.','warn');
   }
-  const ddiCap = ddiBoats.reduce((s,o)=>s+(eff(o.b)-o.b.count),0);
-  const ddiNeed = ddiRows.reduce((s,r)=>s+(r.num||1),0);
+  var ddiCap = ddiBoats.reduce(function(s,o){ return s+(eff(o.b)-o.b.count); },0);
+  var ddiNeed = ddiRows.reduce(function(s,r){ return s+(r.num||1); },0);
   if(ddiNeed>ddiCap) popups.push('Not enough space on DDI boat(s). Tag another DDI or redo run sheet.');
-  for(const r of ddiRows){
-    if(!unassigned.has(r)) continue; const need=r.num||1;
-    for(const {i} of ddiBoats){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['DDI']); unassigned.delete(r); break; }
+  ddiRows.forEach(function(r){
+    if(!unassigned.has(r)) return; var need=r.num||1;
+    for(var x=0;x<ddiBoats.length;x++){
+      var i=ddiBoats[x].i, b=B[i];
+      if(b.count+need<=eff(b)){ addPax(i,r,['DDI']); unassigned.delete(r); break; }
     }
-  }
+  });
 
   /* ===== 2) F+R STRICT ===== */
-  const flyRows = filtered.filter(r=>hasFR(r) && !earlyBoat(r))
-    .sort((a,b)=>{
-      const rank = s => ({'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 5);
-      const ra=rank(a.section), rb=rank(b.section); if(ra!==rb) return ra-rb;
-      return (b.timeMins??-1)-(a.timeMins??-1);
+  var flyRows = filtered.filter(function(r){ return hasFR(r) && !earlyBoat(r); })
+    .sort(function(a,b){
+      function rank(s){ var m={'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}; return m[s]||5; }
+      var ra=rank(a.section), rb=rank(b.section); if(ra!==rb) return ra-rb;
+      return (b.timeMins||-1)-(a.timeMins||-1);
     });
-  let flyBoats = tagOrder('Fly');
+  var flyBoats = tagOrder('Fly');
   if(flyRows.length && flyBoats.length===0){
-    const last = edges[1] ?? (B.length-1); B[last].tagFly=true; flyBoats=tagOrder('Fly');
+    var last = edges[1]!=null?edges[1]:(B.length-1); B[last].tagFly=true; flyBoats=tagOrder('Fly');
     pushMsg('No Fly boat tagged — auto-tagged latest boat.','warn');
   }
-  const flyCap = flyBoats.reduce((s,o)=>s+(eff(o.b)-o.b.count),0);
-  const flyNeed = flyRows.reduce((s,r)=>s+(r.num||1),0);
+  var flyCap = flyBoats.reduce(function(s,o){ return s+(eff(o.b)-o.b.count); },0);
+  var flyNeed = flyRows.reduce(function(s,r){ return s+(r.num||1); },0);
   if(flyNeed>flyCap) popups.push('Not enough space on Fly-Raft boat(s). Tag another Fly-Raft or redo run sheet.');
-  for(const r of flyRows){
-    if(!unassigned.has(r)) continue; const need=r.num||1; let placed=false;
-    for(const {i} of flyBoats.slice().reverse()){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['F+R']); unassigned.delete(r); placed=true; break; }
+  flyRows.forEach(function(r){
+    if(!unassigned.has(r)) return; var need=r.num||1; var placed=false;
+    var rev=flyBoats.slice().reverse();
+    for(var y=0;y<rev.length;y++){
+      var i=rev[y].i, b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['F+R']); unassigned.delete(r); placed=true; break; }
     }
-  }
+  });
 
-  /* ===== 3) *TW* AFTER DDI & F+R ===== */
-  function isFRRow(r){ return hasFR(r); }
-  function isDDIRow(r){ return isDDI(r); }
-  function referenceMember(arr){
-    const known = arr.filter(r=>r.section && r.section!=='Unknown');
-    if(!known.length) return null;
-    return known.sort((a,b)=>{
-      const ra=sectionRank(a.section), rb=sectionRank(b.section);
-      if(rb!==ra) return rb-ra;
-      return (b.timeMins??-1) - (a.timeMins??-1);
-    })[0];
-  }
-
-  // Swap helper kept for local (single-hop) improvements
-  function tryMakeRoomWithSwap(targetIdx, need, refSec, requireFly){
-    const target = B[targetIdx];
-    const refRank = sectionRank(refSec);
-    const laterIdx = edges.filter(i => i > targetIdx);
-    let freed = 0;
-    for(let k = target.pax.length - 1; k >= 0 && freed < need; k--){
-      const entry = target.pax[k];
-      const row = entry.row;
-      const cnt = entry.count;
-      const donorRank = sectionRank(row.section);
-      const donorIsDDI = entry.tags.has('DDI') || isDDI(row);
-      const donorIsFR  = entry.tags.has('F+R') || isFRRow(row);
-      const donorIsTW  = Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped'));
+  /* ===== Local swap helper ===== */
+  function tryMakeRoomWithSwap(targetIdx, need, refSec){
+    var target = B[targetIdx];
+    var refRank = sectionRank(refSec);
+    var laterIdx = edges.filter(function(i){ return i > targetIdx; });
+    var freed = 0;
+    for(var k = target.pax.length - 1; k >= 0 && freed < need; k--){
+      var entry = target.pax[k];
+      var row = entry.row;
+      var cnt = entry.count;
+      var donorRank = sectionRank(row.section);
+      var donorIsDDI = entry.tags.has('DDI') || isDDI(row);
+      var donorIsFR  = entry.tags.has('F+R') || hasFR(row);
+      var donorIsTW  = Array.from(entry.highlights||[]).some(function(h){ return String(h).indexOf('*TW* grouped')>-1; });
       if(donorRank >= refRank) continue;
       if(donorIsDDI || donorIsTW) continue;
-      for(const j of laterIdx){
-        const land = B[j];
+      for(var jI=0;jI<laterIdx.length;jI++){
+        var j=laterIdx[jI], land=B[j];
         if(land.tagDDI) continue;
         if(donorIsFR && !land.tagFly) continue;
         if(land.count + cnt <= eff(land)){
           target.pax.splice(k,1); target.count -= cnt;
-          addPax(j, row, [...entry.tags], [...entry.highlights, 'SWAP (freed earlier boat)']);
+          addPax(j, row, Array.from(entry.tags), Array.from(entry.highlights).concat(['SWAP (freed earlier boat)']));
           freed += cnt; break;
         }
       }
@@ -437,175 +450,167 @@ function allocate(){
     return freed >= need;
   }
 
-  for(const [anchor, groupRaw] of twGroups){
-    const group = Array.from(new Set(groupRaw));
-    if(group.some(isDDIRow)){
-      popups.push(`*TW* group with "${anchor}" includes a DDI passenger. Consider changing PU times to keep them together.`);
-      continue;
-    }
-    const need = group.reduce((s,r)=>s+(r.num||1),0);
-    const anyFR = group.some(isFRRow);
-    const ref = referenceMember(group);
+  /* ===== 3) *TW* AFTER DDI & F+R ===== */
+  function referenceMember(arr){
+    var known = arr.filter(function(r){ return r.section && r.section!=='Unknown'; });
+    if(!known.length) return null;
+    return known.sort(function(a,b){
+      var ra=sectionRank(a.section), rb=sectionRank(b.section);
+      if(rb!==ra) return rb-ra;
+      return (b.timeMins||-1) - (a.timeMins||-1);
+    })[0];
+  }
+  function isFRRow(r){ return hasFR(r); }
+  function isDDIRow(r){ return isDDI(r); }
 
-    let candidates = [];
+  twGroups.forEach(function(groupRaw, anchor){
+    var group = Array.from(new Set(groupRaw));
+    if(group.some(isDDIRow)){
+      popups.push('*TW* group with "'+anchor+'" includes a DDI passenger. Consider changing PU times to keep them together.');
+      return;
+    }
+    var need = group.reduce(function(s,r){ return s+(r.num||1); },0);
+    var anyFR = group.some(isFRRow);
+    var ref = referenceMember(group);
+    var candidates=[];
     if(anyFR){
-      const flyIdx = tagOrder('Fly').map(x=>x.i);
-      if(!flyIdx.length){ popups.push(`*TW* group "${anchor}" requires Fly-Raft but no Fly boat is tagged.`); continue; }
+      var flyIdx = tagOrder('Fly').map(function(x){ return x.i; });
+      if(!flyIdx.length){ popups.push('*TW* group "'+anchor+'" requires Fly-Raft but no Fly boat is tagged.'); return; }
       candidates = (ref && (ref.section==='1st'||ref.section==='2nd')) ? flyIdx.slice() : flyIdx.slice().reverse();
     }else{
-      const notDDI = edges.filter(i=>!B[i].tagDDI);
+      var notDDI = edges.filter(function(i){ return !B[i].tagDDI; });
       if(ref && (ref.section==='1st'||ref.section==='2nd')){
-        const last = edges[1] ?? (B.length-1);
-        candidates = notDDI.filter(i=>i!==last);
+        var last2 = edges[1]!=null?edges[1]:(B.length-1);
+        candidates = notDDI.filter(function(i){ return i!==last2; });
       }else if(ref && (ref.section==='3rd'||ref.section==='4th')){
         candidates = notDDI.slice().reverse();
       }else{
         candidates = notDDI.slice(1);
       }
     }
-
-    let placedIdx = null;
-    for(const i of candidates){
-      const b = B[i];
-      const capLeft = eff(b) - b.count;
+    var placedIdx = null;
+    for(var c=0;c<candidates.length;c++){
+      var i=candidates[c], b=B[i];
+      var capLeft = eff(b) - b.count;
       if(capLeft >= need){ placedIdx = i; break; }
-      const ok = tryMakeRoomWithSwap(i, need - capLeft, ref ? ref.section : 'Unknown', anyFR);
+      var ok = tryMakeRoomWithSwap(i, need - capLeft, ref ? ref.section : 'Unknown');
       if(ok){ placedIdx = i; break; }
     }
     if(placedIdx==null){
-      popups.push(`*TW* group "${anchor}" could not fit on target boat(s)${anyFR?' (Fly-Raft)':''} even after swaps. Tag another boat, reduce holds, or adjust numbers.`);
-      continue;
+      popups.push('*TW* group "'+anchor+'" could not fit on target boat(s)'+(anyFR?' (Fly-Raft)':'')+' even after swaps. Tag another boat, reduce holds, or adjust numbers.');
+      return;
     }
-    // Remove prior placements for these rows (if any) then add
-    for(let bi=0; bi<B.length; bi++){
-      const p=B[bi].pax;
-      for(let k=p.length-1; k>=0; k--){
-        if(group.includes(p[k].row)){ const rem=B[bi].pax.splice(k,1)[0]; B[bi].count -= rem.count; }
+    for(var bi=0; bi<B.length; bi++){
+      var p=B[bi].pax;
+      for(var k=p.length-1; k>=0; k--){
+        if(group.indexOf(p[k].row)>-1){ var rem=B[bi].pax.splice(k,1)[0]; B[bi].count -= rem.count; }
       }
     }
-    for(const r of group){
-      const tags=[]; if(isFRRow(r)) tags.push('F+R'); if(isEE(r)) tags.push('EE'); if(isDDIRow(r)) tags.push('DDI');
+    group.forEach(function(r){
+      var tags=[]; if(isFRRow(r)) tags.push('F+R'); if(isEE(r)) tags.push('EE'); if(isDDIRow(r)) tags.push('DDI');
       addPax(placedIdx, r, tags, ['*TW* grouped (anchored to partner’s section)']);
       unassigned.delete(r);
-    }
+    });
     B[placedIdx].twGroups.add(anchor);
-  }
+  });
 
   /* ===== 4) EE ===== */
-  let eeBoats = tagOrder('EE');
-  for(const r of filtered.filter(rr=>isEE(rr) && unassigned.has(rr))){
-    const need=r.num||1;
-    const earlyEE = (r.section==='1st'||r.section==='2nd');
+  var eeBoats = tagOrder('EE');
+  filtered.filter(function(rr){ return isEE(rr) && unassigned.has(rr); }).forEach(function(r){
+    var need=r.num||1;
+    var earlyEE = (r.section==='1st'||r.section==='2nd');
     if(earlyEE && B.length>=3){
-      let placed=false;
-      for(const i of sectionEdgeOrder(r.section)){
-        const b=B[i];
-        if(b.count+need<=eff(b)){
-          const hl = (r.section==='1st') ? ['EE kept early (1st section)'] : [];
-          addPax(i,r,['EE'],hl);
-          unassigned.delete(r);
-          placed=true; break;
-        }
-      }
-      if(placed) continue;
+      var placed=false;
+      sectionEdgeOrder(r.section).forEach(function(i){
+        if(placed) return;
+        var b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE'], (r.section==='1st'?['EE kept early (1st section)']:[]) ); unassigned.delete(r); placed=true; }
+      });
+      if(placed) return;
     }
-    let placed=false;
-    const eeLate = eeBoats.length?eeBoats.slice().reverse():[{i:lastIdx}];
-    for(const {i} of eeLate){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE'],[earlyEE?'Early EE moved later':'']); unassigned.delete(r); placed=true; break; }
+    var placed2=false;
+    var eeLate = eeBoats.length?eeBoats.slice().reverse():[{i:lastIdx}];
+    for(var e=0;e<eeLate.length;e++){
+      var i=eeLate[e].i; var b=B[i];
+      if(b.count+need<=eff(b)){ addPax(i,r,['EE'],[earlyEE?'Early EE moved later':'']); unassigned.delete(r); placed2=true; break; }
     }
-    if(!placed){
-      for(const {i} of edgeBoats){
-        const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE'],['EE by capacity']); unassigned.delete(r); break; }
+    if(!placed2){
+      for(var q=0;q<edgeBoats.length;q++){
+        var i2=edgeBoats[q].i, b2=B[i2];
+        if(b2.count+need<=eff(b2)){ addPax(i2,r,['EE'],['EE by capacity']); unassigned.delete(r); break; }
       }
     }
-  }
+  });
 
   /* ===== 5) Baseline fill ===== */
-  const orderSec={'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4};
-  [...unassigned].sort((a,b)=>{
-    const da=orderSec[a.section]??4, db=orderSec[b.section]??4;
+  var orderSec={'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4};
+  Array.from(unassigned).sort(function(a,b){
+    var da=orderSec[a.section]||4, db=orderSec[b.section]||4;
     if(da!==db) return da-db;
-    return (a.timeMins??1e9)-(b.timeMins??1e9);
-  }).forEach(r=>{
-    const need=r.num||1; let placed=false;
-    for(const i of sectionEdgeOrder(r.section)){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r); placed=true; break; }
-    }
+    return (a.timeMins||1e9)-(b.timeMins||1e9);
+  }).forEach(function(r){
+    var need=r.num||1; var placed=false;
+    sectionEdgeOrder(r.section).forEach(function(i){
+      if(placed) return;
+      var b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r); placed=true; }
+    });
     if(!placed){
-      for(const {i} of edgeBoats){
-        const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Capacity fallback']); placed=true; break; }
+      for(var z=0; z<edgeBoats.length; z++){
+        var i2=edgeBoats[z].i, b2=B[i2]; if(b2.count+need<=eff(b2)){ addPax(i2,r,[],['Capacity fallback']); placed=true; break; }
       }
     }
     if(placed) unassigned.delete(r);
   });
 
   /* ===== 6) RIPPLE-CHAIN FINAL FIT ===== */
-  // Decide if an entry can land on boat j (respect constraints & capacity)
   function canLand(entry, j){
-    const land=B[j];
-    if(land.tagDDI) return false; // never land donors on DDI
-    const donorIsFR = entry.tags?.has?.('F+R') || /\(\s*F\s*\+\s*R\s*\)/i.test(entry.row.clientRaw) || entry.row.flyFromCount || noteFly(entry.row);
+    var land=B[j];
+    if(land.tagDDI) return false;
+    var donorIsFR = entry.tags && entry.tags.has && entry.tags.has('F+R') || hasFR(entry.row);
     if(donorIsFR && !land.tagFly) return false;
     return land.count + entry.count <= eff(land);
   }
-  // Build donor list (best-to-move first)
   function listMovables(bi, refSec){
-    const b=B[bi];
-    const refRank = sectionRank(refSec);
-    const arr = b.pax.map((e,idx)=>({entry:e, idx, secRank:sectionRank(e.row.section)}))
-      .filter(o=>{
-        const e=o.entry;
-        const donorIsDDI = e.tags.has('DDI') || isDDI(e.row);
-        const donorIsTW  = Array.from(e.highlights||[]).some(h => h.includes('*TW* grouped'));
-        if(donorIsDDI || donorIsTW) return false;
-        // only move people from *later or equal* sections than the reference wants to be earlier than
-        return o.secRank < refRank;
-      });
-    // Prioritise: later sections first, smaller groups first, 'Own Way/Unknown' first
-    arr.sort((a,b)=>{
-      if(a.secRank!==b.secRank) return a.secRank - b.secRank; // 0(Unknown),1(4th),2(3rd),3(2nd),4(1st) — lower = later
-      if(a.entry.count!==b.entry.count) return a.entry.count - b.entry.count;
-      const ao = isOwn(a.entry.row)?0:1, bo = isOwn(b.entry.row)?0:1;
-      if(ao!==bo) return ao - bo;
+    var b=B[bi], refRank=sectionRank(refSec);
+    var arr = b.pax.map(function(e,idx){ return {entry:e, idx:idx, secRank:sectionRank(e.row.section)}; }).filter(function(o){
+      var e=o.entry;
+      var donorIsDDI = e.tags.has('DDI') || isDDI(e.row);
+      var donorIsTW  = Array.from(e.highlights||[]).some(function(h){ return String(h).indexOf('*TW* grouped')>-1; });
+      if(donorIsDDI || donorIsTW) return false;
+      return o.secRank < refRank;
+    });
+    arr.sort(function(a,b){
+      if(a.secRank!==b.secRank) return a.secRank - b.secRank; // later sections first (Unknown/4th lowest rank numbers)
+      if(a.entry.count!==b.entry.count) return a.entry.count - b.entry.count; // smaller groups first
+      var ao = isOwn(a.entry.row)?0:1, bo=isOwn(b.entry.row)?0:1; if(ao!==bo) return ao - bo;
       return 0;
     });
     return arr;
   }
-
-  // Recursive ripple: free 'remaining' seats on boat idx by moving donors to later boats (or rippling further)
   function tryRippleFree(idx, remaining, refSec, visitedSet){
     if(remaining<=0) return true;
-    const key = idx+'|'+remaining+'|'+refSec;
+    var key = idx+'|'+remaining+'|'+refSec;
     if(visitedSet.has(key)) return false;
     visitedSet.add(key);
 
-    const donors = listMovables(idx, refSec);
-    for(const d of donors){
-      const e = d.entry, cnt = e.count;
-      // try to land directly on some later boat
-      let landed = false;
-      for(let j=idx+1; j<B.length; j++){
+    var donors = listMovables(idx, refSec);
+    for(var dI=0; dI<donors.length; dI++){
+      var d = donors[dI], e=d.entry, cnt=e.count;
+      for(var j=idx+1; j<B.length; j++){
         if(canLand(e, j)){
-          // move e to j
           B[idx].pax.splice(d.idx,1); B[idx].count -= cnt;
-          addPax(j, e.row, [...e.tags], [...e.highlights, 'RIPPLE→']);
+          addPax(j, e.row, Array.from(e.tags), Array.from(e.highlights).concat(['RIPPLE→']));
           if(tryRippleFree(idx, remaining - cnt, refSec, visitedSet)) return true;
           // backtrack
-          const last = B[j].pax.pop(); B[j].count -= cnt;
+          var last=B[j].pax.pop(); B[j].count -= cnt;
           B[idx].pax.splice(d.idx,0,e); B[idx].count += cnt;
-          landed = false;
         }else{
-          // attempt to ripple further on j to make space for e
-          const needOnJ = cnt - (eff(B[j]) - B[j].count);
+          var needOnJ = cnt - (eff(B[j]) - B[j].count);
           if(needOnJ>0){
             if(tryRippleFree(j, needOnJ, e.row.section || 'Unknown', visitedSet) && canLand(e, j)){
-              // commit move to j
               B[idx].pax.splice(d.idx,1); B[idx].count -= cnt;
-              addPax(j, e.row, [...e.tags], [...e.highlights, 'RIPPLE→']);
+              addPax(j, e.row, Array.from(e.tags), Array.from(e.highlights).concat(['RIPPLE→']));
               if(tryRippleFree(idx, remaining - cnt, refSec, visitedSet)) return true;
-              // backtrack
-              const last = B[j].pax.pop(); B[j].count -= cnt;
+              var last2=B[j].pax.pop(); B[j].count -= cnt;
               B[idx].pax.splice(d.idx,0,e); B[idx].count += cnt;
             }
           }
@@ -614,148 +619,145 @@ function allocate(){
     }
     return false;
   }
-
   function placeWithRipple(r){
-    const need = r.num||1;
-    const prefs = sectionEdgeOrder(r.section);
-    for(const i of prefs){
-      const capLeft = eff(B[i]) - B[i].count;
+    var need = r.num||1;
+    var prefs = sectionEdgeOrder(r.section);
+    for(var pI=0;pI<prefs.length;pI++){
+      var i=prefs[pI], capLeft = eff(B[i]) - B[i].count;
       if(capLeft>=need){ addPax(i,r,[],['Final-fit']); return true; }
-      const visited = new Set();
+      var visited = new Set();
       if(tryRippleFree(i, need - capLeft, r.section || 'Unknown', visited)){
-        addPax(i,r,[],['Final-fit (ripple)']);
-        return true;
+        addPax(i,r,[],['Final-fit (ripple)']); return true;
       }
     }
     return false;
   }
-
-  // Try ripple-placement for anything still unassigned
-  for(const r of [...unassigned]){
+  Array.from(unassigned).forEach(function(r){
     if(placeWithRipple(r)){ unassigned.delete(r); }
-  }
+  });
 
   /* ===== Render output ===== */
-  const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
-  const results = el('results'); results.innerHTML='';
-  let total=0, totalEffCap=0;
+  var out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
+  var results = el('results'); results.innerHTML='';
+  var totalAllocated = 0, totalCapacity = 0;
 
   if(ignoredCharter.length){
-    const warn=document.createElement('div');
-    warn.className='err';
-    const list = ignoredCharter.slice(0,10).map(c=>`• ${escapeHtml(c.clientRaw)} (PU: ${escapeHtml(c.pu)})`).join('\n');
-    warn.textContent = `Ignored ${ignoredCharter.length} charter booking(s) — please ensure the charter boat is not being used.\n\nExamples:\n${list}${ignoredCharter.length>10?'\n…':''}`;
+    var warn=document.createElement('div'); warn.className='err';
+    var list = ignoredCharter.slice(0,10).map(function(c){ return '• '+escapeHtml(c.clientRaw)+' (PU: '+escapeHtml(c.pu)+')'; }).join('\n');
+    warn.textContent = 'Ignored '+ignoredCharter.length+' charter booking(s) — please ensure the charter boat is not being used.\n\nExamples:\n'+list+(ignoredCharter.length>10?'\n…':'');
     results.appendChild(warn);
   }
 
-  B.forEach((b,idx)=>{
-    total+=b.count; totalEffCap+=eff(b);
-    const boatTags=[b.tagDDI?'DDI':'', b.tagFly?'Fly-Raft':'', b.tagEE?'EE':''].filter(Boolean).join('; ');
-    const head=document.createElement('div');
+  B.forEach(function(b,idx){
+    totalAllocated+=b.count; totalCapacity+=eff(b);
+    var boatTags=[b.tagDDI?'DDI':'', b.tagFly?'Fly-Raft':'', b.tagEE?'EE':''].filter(function(s){return !!s;}).join('; ');
+    var head=document.createElement('div');
     head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
     head.style.margin='8px 0 4px';
-    head.innerHTML = `<div><b>${idx+1}. ${b.name}</b> &nbsp; <span class="pill ${b.count<=eff(b)?'ok':'bad'}">${b.count}/${eff(b)}</span></div>
-      <div class="chips">
-        ${b.tagDDI?'<span class="chip">DDI</span>':''}
-        ${b.tagFly?'<span class="chip">Fly-Raft</span>':''}
-        ${b.tagEE?'<span class="chip">EE</span>':''}
-        ${b.twGroups.size?`<span class="chip">TW groups: ${b.twGroups.size}</span>`:''}
-        ${b.toilet?'<span class="chip">🚻</span>':''}
-      </div>`;
+    head.innerHTML =
+      '<div><b>'+(idx+1)+'. '+b.name+'</b> &nbsp; <span class="pill '+(b.count<=eff(b)?'ok':'bad')+'">'+b.count+'/'+eff(b)+'</span></div>'+
+      '<div class="chips">'+
+        (b.tagDDI?'<span class="chip">DDI</span>':'')+
+        (b.tagFly?'<span class="chip">Fly-Raft</span>':'')+
+        (b.tagEE?'<span class="chip">EE</span>':'')+
+        (b.twGroups.size?'<span class="chip">TW groups: '+b.twGroups.size+'</span>':'')+
+        (b.toilet?'<span class="chip">🚻</span>':'')+
+      '</div>';
     results.appendChild(head);
 
-    const table=document.createElement('table');
-    table.innerHTML = `<thead><tr>
-      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Highlights</th>
-    </tr></thead>`;
-    const tb=document.createElement('tbody');
+    var table=document.createElement('table');
+    table.innerHTML = '<thead><tr>'+
+      '<th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Highlights</th>'+
+    '</tr></thead>';
+    var tb=document.createElement('tbody');
 
     if(b.hold>0){
-      const tr=document.createElement('tr');
-      tr.innerHTML=`
-        <td>—</td><td>SEAT HOLD</td><td>${b.hold}</td>
-        <td></td><td></td><td></td>
-        <td><span class="pill tag">Hold</span></td>
-        <td><span class="pill warn">Seats reserved; not for allocation</span></td>`;
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td>—</td><td>SEAT HOLD</td><td>'+b.hold+'</td><td></td><td></td><td></td>'+
+                   '<td><span class="pill tag">Hold</span></td>'+
+                   '<td><span class="pill warn">Seats reserved; not for allocation</span></td>';
       tb.appendChild(tr);
       out.push([b.name,idx+1,b.hold,boatTags,'SEAT HOLD',b.hold,'','','','','Hold','Seats reserved; not for allocation','']);
     }
 
-    b.pax.forEach((p,i)=>{
-      const tags=[...p.tags], hl=[...p.highlights];
-      const tr=document.createElement('tr');
-      tr.innerHTML = `
-        <td>${i+1}</td>
-        <td>${escapeHtml(p.row.clientRaw)}</td>
-        <td>${p.count}</td>
-        <td>${escapeHtml(p.row.pu)}</td>
-        <td>${p.row.time||''}</td>
-        <td>${p.row.section}</td>
-        <td>${tags.map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
-        <td>${hl.filter(Boolean).map(t=>`<span class="pill warn">${escapeHtml(t)}</span>`).join(' ')}</td>`;
+    b.pax.forEach(function(p,i){
+      var tags=Array.from(p.tags), hl=Array.from(p.highlights);
+      var tr=document.createElement('tr');
+      tr.innerHTML =
+        '<td>'+(i+1)+'</td>'+
+        '<td>'+escapeHtml(p.row.clientRaw)+'</td>'+
+        '<td>'+p.count+'</td>'+
+        '<td>'+escapeHtml(p.row.pu)+'</td>'+
+        '<td>'+(p.row.time||'')+'</td>'+
+        '<td>'+p.row.section+'</td>'+
+        '<td>'+tags.map(function(t){return '<span class="pill tag">'+t+'</span>';}).join(' ')+'</td>'+
+        '<td>'+hl.filter(function(t){return !!t;}).map(function(t){return '<span class="pill warn">'+escapeHtml(t)+'</span>';}).join(' ')+'</td>';
       tb.appendChild(tr);
-      out.push([b.name,idx+1,b.hold,boatTags,p.row.clientRaw,p.count,p.row.pu,p.row.time||'',p.row.notes||'',p.row.phone||'',tags.join('; '),hl.filter(Boolean).join('; '),p.row.section]);
+      out.push([b.name,idx+1,b.hold,boatTags,p.row.clientRaw,p.count,p.row.pu,p.row.time||'',p.row.notes||'',p.row.phone||'',tags.join('; '),hl.filter(function(t){return !!t;}).join('; '),p.row.section]);
     });
     table.appendChild(tb);
     results.appendChild(table);
   });
 
-  /* ===== Overflow / Holding boat (ensures every booking is present) ===== */
-  const overflow = [...unassigned];
+  /* ===== Overflow / Holding boat ===== */
+  var overflow = Array.from(unassigned);
   if(overflow.length){
-    const style = { name:'Overflow (Review)', pillClass:'bad', tip:'Unplaced — adjust holds/tags or add boat' };
-    const head=document.createElement('div');
+    var head=document.createElement('div');
     head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
     head.style.margin='12px 0 6px';
-    head.innerHTML = `<div><b>⚠ ${style.name}</b> &nbsp; <span class="pill ${style.pillClass}">${overflow.reduce((s,r)=>s+(r.num||1),0)} pax</span></div>
-      <div class="chips"><span class="chip">${style.tip}</span></div>`;
+    var overCount = overflow.reduce(function(s,r){ return s+(r.num||1); },0);
+    head.innerHTML = '<div><b>⚠ Overflow (Review)</b> &nbsp; <span class="pill bad">'+overCount+' pax</span></div>'+
+                     '<div class="chips"><span class="chip">Unplaced — adjust holds/tags or add boat</span></div>';
     results.appendChild(head);
 
-    const table=document.createElement('table');
-    table.innerHTML = `<thead><tr>
-      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Why</th>
-    </tr></thead>`;
-    const tb=document.createElement('tbody');
-    overflow.forEach((r,i)=>{
-      const tags=[];
-      if(isDDI(r)) tags.push('DDI');
-      if(hasFR(r)) tags.push('F+R');
-      if(isEE(r))  tags.push('EE');
-      const tr=document.createElement('tr');
-      tr.innerHTML = `
-        <td>${i+1}</td>
-        <td>${escapeHtml(r.clientRaw)}</td>
-        <td>${r.num||1}</td>
-        <td>${escapeHtml(r.pu)}</td>
-        <td>${r.time||''}</td>
-        <td>${r.section}</td>
-        <td>${tags.map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
-        <td><span class="pill bad">No capacity after ripple</span></td>`;
+    var table=document.createElement('table');
+    table.innerHTML = '<thead><tr>'+
+      '<th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Why</th>'+
+    '</tr></thead>';
+    var tb=document.createElement('tbody');
+    overflow.forEach(function(r,i){
+      var tags=[]; if(isDDI(r)) tags.push('DDI'); if(hasFR(r)) tags.push('F+R'); if(isEE(r)) tags.push('EE');
+      var tr=document.createElement('tr');
+      tr.innerHTML =
+        '<td>'+(i+1)+'</td>'+
+        '<td>'+escapeHtml(r.clientRaw)+'</td>'+
+        '<td>'+(r.num||1)+'</td>'+
+        '<td>'+escapeHtml(r.pu)+'</td>'+
+        '<td>'+(r.time||'')+'</td>'+
+        '<td>'+r.section+'</td>'+
+        '<td>'+tags.map(function(t){return '<span class="pill tag">'+t+'</span>';}).join(' ')+'</td>'+
+        '<td><span class="pill bad">No capacity after ripple</span></td>';
       tb.appendChild(tr);
-      out.push(['OVERFLOW', '', '', '', r.clientRaw, r.num||1, r.pu, r.time||'', r.notes||'', r.phone||'', tags.join('; '), 'Unplaced after ripple', r.section]);
+      out.push(['OVERFLOW','','','',r.clientRaw,r.num||1,r.pu,r.time||'',r.notes||'',r.phone||'',tags.join('; '),'Unplaced after ripple',r.section]);
     });
     table.appendChild(tb); results.appendChild(table);
   }
 
-  const summary=document.createElement('div'); summary.className='status';
+  var summary=document.createElement('div'); summary.className='status';
   summary.style.margin='10px 0 0';
-  const total= B.reduce((s,b)=>s+b.count,0);
-  const totalEffCap= B.reduce((s,b)=>s+eff(b),0);
-  const totalOverflow = overflow.reduce((s,r)=>s+(r.num||1),0);
-  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}
-  ${totalOverflow?` — Overflow (review): <b>${totalOverflow}</b>`:''}`;
+  var totalOverflow = overflow.reduce(function(s,r){ return s+(r.num||1); },0);
+  summary.innerHTML = 'Total allocated: <b>'+totalAllocated+'</b> / Effective capacity: <b>'+totalCapacity+'</b>'+(totalAllocated>totalCapacity?' <span class="pill bad">Over capacity</span>':'')+
+    (totalOverflow?(' — Overflow (review): <b>'+totalOverflow+'</b>'):'');
   results.prepend(summary);
 
   // CSV Download
-  const safeToCSV = rows => rows.map(r=>r.map(v=>{
-    if(v==null) return '';
-    const s=String(v);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
-  }).join(',')).join('\n');
-  const csv = safeToCSV(out);
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob);
-  const dl=document.getElementById('download');
-  dl.onclick=()=>{ const stamp=new Date().toISOString().slice(0,10); const a=document.createElement('a'); a.href=url; a.download=`boat-split-${document.getElementById('tour').value}-${stamp}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
+  function safeToCSV(rows){
+    return rows.map(function(r){
+      return r.map(function(v){
+        if(v==null) return '';
+        var s=String(v);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+      }).join(',');
+    }).join('\n');
+  }
+  var csv = safeToCSV(out);
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); var url=URL.createObjectURL(blob);
+  var dl=document.getElementById('download');
+  dl.onclick=function(){
+    var stamp=new Date().toISOString().slice(0,10);
+    var a=document.createElement('a'); a.href=url; a.download='boat-split-'+document.getElementById('tour').value+'-'+stamp+'.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+  };
   dl.disabled=false;
   setStatus('Allocation complete.');
   if(popups.length) alert(popups.join('\n\n'));
@@ -763,59 +765,71 @@ function allocate(){
 
 /* ========= Wiring ========= */
 function wire(){
-  el('resetBoats').onclick=()=>{ boats=cloneBoats(); renderBoats(); setStatus('Boats reset.'); };
+  el('resetBoats').onclick=function(){ boats=cloneBoats(); renderBoats(); setStatus('Boats reset.'); };
   el('run').onclick=allocate;
 
-  el('file').addEventListener('change', async e=>{
+  el('file').addEventListener('change', function(e){
     clearMsgs(); popups=[]; ignoredCharter = [];
-    const f=e.target.files?.[0]; if(!f) return;
-    const text = await f.text();
-    const raw = parseCSV(text);
-    if(!raw.length){ setStatus('Empty CSV.'); return; }
-    const header = raw[0].map(h=>h.trim());
-    const data = raw.slice(1);
+    var f=e.target.files && e.target.files[0]; if(!f) return;
+    var reader=new FileReader();
+    reader.onload=function(){
+      try{
+        var text=String(reader.result||'');
+        var raw = parseCSV(text);
+        if(!raw.length){ setStatus('Empty CSV.'); return; }
+        var header = raw[0].map(function(h){ return String(h).trim(); });
+        var data = raw.slice(1);
 
-    const idxClient=findColIndex(header,COL_ALIASES.client);
-    const idxNum   =findColIndex(header,COL_ALIASES.num);
-    const idxPU    =findColIndex(header,COL_ALIASES.pu);
-    const idxTime  =findColIndex(header,COL_ALIASES.time);
-    const idxNotes =findColIndex(header,COL_ALIASES.notes);
-    const idxPhone =findColIndex(header,COL_ALIASES.phone);
+        var idxClient=findColIndex(header,COL_ALIASES.client);
+        var idxNum   =findColIndex(header,COL_ALIASES.num);
+        var idxPU    =findColIndex(header,COL_ALIASES.pu);
+        var idxTime  =findColIndex(header,COL_ALIASES.time);
+        var idxNotes =findColIndex(header,COL_ALIASES.notes);
+        var idxPhone =findColIndex(header,COL_ALIASES.phone);
 
-    if(idxClient<0 || idxPU<0){ setStatus('Missing required columns: need at least Client and P/U Point.'); return; }
+        if(idxClient<0 || idxPU<0){ setStatus('Missing required columns: need at least Client and P/U Point.'); return; }
 
-    const prepared = data
-      .filter(r => r.some(c => norm(c) !== ''))
-      .map(r=>{
-        const clientRaw = norm(r[idxClient]);
-        const numRaw = (r[idxNum]??'').toString();
-        const FRfromCount  = /\(\s*F\s*\+\s*R\s*\)/i.test(numRaw);
-        const FRfromClient = /\(\s*F\s*\+\s*R\s*\)/i.test(clientRaw);
-        const FRfromNotes  = /\(\s*F\s*\+\s*R\s*\)/i.test(norm(idxNotes>=0?r[idxNotes]:'')); 
-        const flyFromAny   = FRfromCount || FRfromClient || FRfromNotes;
+        var prepared = data
+          .filter(function(r){ for(var k=0;k<r.length;k++){ if(norm(r[k])!=='') return true; } return false; })
+          .map(function(r){
+            var clientRaw = norm(r[idxClient]);
+            var numRaw = (r[idxNum]==null?'':String(r[idxNum]));
+            var FRfromCount  = /\(\s*F\s*\+\s*R\s*\)/i.test(numRaw);
+            var FRfromClient = /\(\s*F\s*\+\s*R\s*\)/i.test(clientRaw);
+            var FRfromNotes  = /\(\s*F\s*\+\s*R\s*\)/i.test(norm(idxNotes>=0?r[idxNotes]:'')); 
+            var flyFromAny   = FRfromCount || FRfromClient || FRfromNotes;
 
-        const numMatch = numRaw.match(/\d+/);
-        const num = Math.max(1, numMatch ? parseInt(numMatch[0],10) : 1);
+            var numMatch = numRaw.match(/\d+/);
+            var num = Math.max(1, numMatch ? parseInt(numMatch[0],10) : 1);
 
-        const pu   = norm(r[idxPU]);
-        const time = norm(idxTime>=0?r[idxTime]:'');
-        const notes= norm(idxNotes>=0?r[idxNotes]:'');
-        const phone= norm(idxPhone>=0?r[idxPhone]:'');
-        const timeMins = parseTimeToSortable(time);
+            var pu   = norm(r[idxPU]);
+            var time = norm(idxTime>=0?r[idxTime]:'');
+            var notes= norm(idxNotes>=0?r[idxNotes]:'');
+            var phone= norm(idxPhone>=0?r[idxPhone]:'');
+            var timeMins = parseTimeToSortable(time);
 
-        return { clientRaw, num, pu, time, timeMins, notes, phone, flyFromCount: flyFromAny };
-      });
+            return { clientRaw:clientRaw, num:num, pu:pu, time:time, timeMins:timeMins, notes:notes, phone:phone, flyFromCount: flyFromAny };
+          });
 
-    ignoredCharter = prepared.filter(x=>/charter/i.test(x.pu));
-    rows = prepared.filter(x=>!/charter/i.test(x.pu) && !/\bweather\s*hold\b/i.test(x.clientRaw));
+        ignoredCharter = prepared.filter(function(x){ return /charter/i.test(x.pu); });
+        rows = prepared.filter(function(x){ return !/charter/i.test(x.pu) && !/\bweather\s*hold\b/i.test(x.clientRaw); });
 
-    if(ignoredCharter.length){
-      pushMsg(`Ignored ${ignoredCharter.length} charter booking(s). Ensure charter boat is not used.`,`warn`);
-    }
+        if(ignoredCharter.length){
+          pushMsg('Ignored '+ignoredCharter.length+' charter booking(s). Ensure charter boat is not used.','warn');
+        }
 
-    el('results').innerHTML='<span class="muted">File loaded. Configure boats, then <b>Allocate</b>.</span>';
-    el('download').disabled=true;
-    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready. (v=ripple-chain)`);
+        el('results').innerHTML='<span class="muted">File loaded. Configure boats, then <b>Allocate</b>.</span>';
+        el('download').disabled=true;
+        setStatus('Loaded '+rows.length+' rows (ignored '+ignoredCharter.length+' charter). Ready. (v=ripple-chain)');
+      }catch(err){
+        var host = document.getElementById('results');
+        var pre = document.createElement('div'); pre.className='err';
+        pre.textContent = 'Parse error: '+(err && err.stack ? err.stack : String(err));
+        host.prepend(pre);
+        setStatus('Error while reading CSV.');
+      }
+    };
+    reader.readAsText(f);
   });
 }
 
@@ -825,13 +839,13 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus('Ready. (v=ripple-chain)');
+    setStatus('Ready.');
   }catch(e){
-    const host = document.querySelector('#results');
-    const pre = document.createElement('div');
+    var host = document.getElementById('results');
+    var pre = document.createElement('div');
     pre.className='err';
     pre.textContent='Init error: '+(e&&e.stack?e.stack:String(e));
-    host?.prepend(pre);
+    host.prepend(pre);
   }
 }
 if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', init); } else { init(); }
