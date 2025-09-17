@@ -7,7 +7,7 @@
 
 <!-- Cache buster -->
 <script>
-  const APP_VERSION = '2025-09-17-holding-boat';
+  const APP_VERSION = '2025-09-17-holding-boat-v2';
   (function(){
     try{
       const u = new URL(location.href);
@@ -316,7 +316,7 @@ function allocate(){
   if(!rows.length){ setStatus('Please upload a CSV first.'); return; }
   if(!boats.length){ setStatus('No boats in use. Click "Reset boats".'); return; }
 
-  // Working copy of boats
+  // Working copy of boats (real boats only)
   const B = boats.map(b=>({
     name:b.name,seats:b.seats,toilet:b.toilet,
     tagDDI:!!b.tagDDI, tagFly:!!b.tagFly, tagEE:!!b.tagEE,
@@ -324,7 +324,7 @@ function allocate(){
     pax:[], count:0
   }));
   const N = B.length;
-  const eff = b => Math.max(0, b.seats - b.hold); // effective capacity (user holds only)
+  const eff = b => Math.max(0, b.seats - b.hold); // effective capacity
 
   // ===== Hidden holding "boat" (not rendered) =====
   const HOLD = { name:'__HOLDING__', pax:[], count:0 };
@@ -352,6 +352,7 @@ function allocate(){
   const prepared = rows.slice();
   const ignoredCharter = prepared.filter(r=>charter(r));
   const filtered = prepared.filter(r=>!wHoldName(r) && !charter(r));
+
   filtered.forEach((r)=>{
     r.isDDI=isDDI(r);
     r.isFR =hasFR(r);
@@ -359,10 +360,8 @@ function allocate(){
     r.wantsEarly=wantsEarly(r);
     r.isOwnWayOrUnknown=isOwnWayOrUnknown(r);
     r.isMAP=isMAP(r);
+    if(!r._id) r._id = Math.random().toString(36).slice(2);
   });
-
-  const totalNeed = filtered.reduce((s,r)=>s+(r.num||1),0);
-  const totalEffCap = B.reduce((s,b)=>s+eff(b),0);
 
   // Section target → boat index
   function sectionTargetIndex(section, n){
@@ -371,11 +370,6 @@ function allocate(){
     if(section==='3rd') return Math.round(2*(n-1)/3);
     if(section==='4th') return n-1;
     return n-1; // Unknown → latest
-  }
-  function neighbors(idx, refRow){
-    const t = sectionTargetIndex(refRow.section, N);
-    const opts=[]; if(idx-1>=0) opts.push(idx-1); if(idx+1<N) opts.push(idx+1);
-    return opts.sort((a,b)=>Math.abs(a-t)-Math.abs(b-t)||a-b);
   }
   function sectionDistance(row,boatIdx){ const t=sectionTargetIndex(row.section,N); return Math.abs(boatIdx - t); }
 
@@ -413,8 +407,7 @@ function allocate(){
   }
 
   /* ===== Single-assignment & hard-cap guards ===== */
-  filtered.forEach(r=>{ if(!r._id) r._id = Math.random().toString(36).slice(2); });
-  const assignedTo = new Map(); // rowId -> boatIdx (not used for HOLD)
+  const assignedTo = new Map(); // rowId -> boatIdx
   function safeAddEntry(boatIdx, e){
     const fresh = e.members.filter(m => !assignedTo.has(m._id));
     if(!fresh.length) return false;
@@ -433,147 +426,76 @@ function allocate(){
     return true;
   }
 
-  /* ===== Holding helpers ===== */
-  function moveToHold(fromIdx, e, reason){
-    removeEntry(B, fromIdx, e);
-    HOLD.pax.push(e); HOLD.count += e.count;
-    e.highlights.add(reason || 'Holding swap');
-  }
-  function tryDrainHoldOnce(){ // one pass
-    let moved=false;
-    for(let k=HOLD.pax.length-1;k>=0;k--){
-      const e=HOLD.pax[k];
-      if(placeUnit(e, /*allowHolding*/ false)){ // place without using holding again
-        HOLD.pax.splice(k,1); HOLD.count -= e.count;
-        moved=true;
-      }
-    }
-    return moved;
-  }
-
-  // Free room on a target boat by moving some entries to holding
+  /* ===== Holding helpers (smart swap) ===== */
+  // Choose entries to move off a boat to create `need` seats, prioritising "worst match":
+  // 1) furthest from their target section relative to this boat, 2) larger groups first.
   function freeWithHolding(boatIdx, need){
     const effCap = eff(B[boatIdx]);
     let freeNow = effCap - B[boatIdx].count;
     if (freeNow >= need) return true;
 
     const movable=B[boatIdx].pax.filter(x=>!x.locked);
-    // Prefer entries furthest from their section target, and larger first
     movable.sort((a,b)=>{
       const da=sectionDistance(flags(a).rep, boatIdx), db=sectionDistance(flags(b).rep, boatIdx);
-      if(da!==db) return db-da;
-      return b.count - a.count;
+      if(da!==db) return db-da; // move worse fit first
+      return b.count - a.count; // then bigger first
     });
 
     for (const e of movable){
-      moveToHold(boatIdx, e, 'Holding swap to free capacity');
+      removeEntry(B, boatIdx, e);
+      HOLD.pax.push(e); HOLD.count += e.count;
+      e.highlights.add('Holding swap to free capacity');
       freeNow += e.count;
       if (freeNow >= need) return true;
     }
     return false;
   }
 
-  /* ===== Ripple (now can fall back to holding) ===== */
-  function tryMoveEntry(fromIdx, e, depth, seen){
-    const rep = flags(e).rep;
-    for(const nb of neighbors(fromIdx, rep)){
-      if(!canSeatOnBoat(e,nb)) continue;
-      // direct
-      if(B[nb].count + e.count <= eff(B[nb])){
-        removeEntry(B, fromIdx, e); addEntry(B, nb, e); e.highlights.add('Ripple move'); return true;
-      }
-      // neighbor ripple
-      if(depth>0){
-        const key = nb+'|'+e.id;
-        if(!seen.has(key)){
-          seen.add(key);
-          if(rippleFree(nb, e.count, rep, depth-1, seen)){
-            removeEntry(B, fromIdx, e); addEntry(B, nb, e); e.highlights.add('Ripple move'); return true;
-          }
-        }
-      }
-      // holding swap on neighbor if still stuck
-      const deficit = e.count - (eff(B[nb]) - B[nb].count);
-      if (deficit > 0 && freeWithHolding(nb, deficit)){
-        removeEntry(B, fromIdx, e); addEntry(B, nb, e); e.highlights.add('Ripple via holding'); return true;
-      }
-    }
-    return false;
-  }
-  function rippleFree(boatIdx, need, orientRow, depth, seen){
-    const effCap = eff(B[boatIdx]);
-    if(effCap - B[boatIdx].count >= need) return true;
-    const movable=B[boatIdx].pax.filter(x=>!x.locked);
-    movable.sort((a,b)=>{
-      const da=sectionDistance(flags(a).rep, boatIdx), db=sectionDistance(flags(b).rep, boatIdx);
-      if(da!==db) return db-da; return b.count - a.count;
-    });
-    for(const e of movable){
-      if(tryMoveEntry(boatIdx,e,depth,seen)){
-        if(effCap - B[boatIdx].count >= need) return true;
-      }
-    }
-    // As a last resort on this boat, push to holding
-    const deficit = need - (eff(B[boatIdx]) - B[boatIdx].count);
-    if(deficit>0 && freeWithHolding(boatIdx, deficit)){
-      return true;
+  function tryPlaceOnBoat(i, e){
+    if(!canSeatOnBoat(e,i)) return false;
+    if(B[i].count + e.count <= eff(B[i])) return safeAddEntry(i,e);
+    const deficit = e.count - (eff(B[i]) - B[i].count);
+    if(deficit>0 && freeWithHolding(i, deficit) && (B[i].count + e.count <= eff(B[i]))) {
+      e.highlights.add('Placed via holding');
+      return safeAddEntry(i,e);
     }
     return false;
   }
 
-  /* ====== DDI strict ====== */
+  /* ===== DDI strict first ===== */
   let ddiIdx = [...Array(N).keys()].filter(i=>B[i].tagDDI);
   const ddiRows = filtered.filter(r=>r.isDDI);
   if(ddiRows.length && !ddiIdx.length && N){ B[0].tagDDI=true; ddiIdx=[0]; pushMsg('Auto-tagged earliest boat as DDI.','warn'); }
   for(const r of ddiRows){
     const e = entryFromRows([r], true, ['DDI']);
     let placed=false;
-    for(const i of ddiIdx){
-      if(B[i].count + e.count <= eff(B[i])){ placed=safeAddEntry(i,e); if(placed) break; }
+    for(const i of ddiIdx){ if(tryPlaceOnBoat(i,e)){ placed=true; break; } }
+    if(!placed){
+      // nearest-to-target DDI boat
+      const t = sectionTargetIndex(r.section, N);
+      const byNear = ddiIdx.slice().sort((a,b)=>Math.abs(a-t)-Math.abs(b-t));
+      for(const i of byNear){ if(tryPlaceOnBoat(i,e)){ placed=true; break; } }
     }
     if(!placed){
-      for(const i of ddiIdx){
-        const seen=new Set();
-        if(rippleFree(i, e.count, r, 3, seen)){ placed=safeAddEntry(i,e); if(placed){ e.highlights.add('Ripple move'); break; } }
-        if(!placed){
-          const deficit = e.count - (eff(B[i]) - B[i].count);
-          if(deficit>0 && freeWithHolding(i, deficit)){
-            placed=safeAddEntry(i,e); if(placed){ e.highlights.add('Placed via holding'); break; }
-          }
-        }
-      }
-    }
-    if(!placed){
-      pushMsg('DDI overflow: moved DDI pax into holding; will attempt later.','warn');
-      moveToHold(ddiIdx[0]??0, e, 'DDI overflow → holding');
+      HOLD.pax.push(e); HOLD.count += e.count; e.highlights.add('DDI overflow → holding');
     }
   }
 
-  /* ====== Fly-Raft strict ====== */
+  /* ===== Fly-Raft strict ===== */
   let flyIdx = [...Array(N).keys()].filter(i=>B[i].tagFly);
   const frRows = filtered.filter(r=>r.isFR && !r.isDDI);
   if(frRows.length && !flyIdx.length && N){ B[N-1].tagFly=true; flyIdx=[N-1]; pushMsg('Auto-tagged latest boat as Fly-Raft.','warn'); }
   for(const r of frRows){
     const e = entryFromRows([r], true, ['F+R']);
     let placed=false;
-    for(const i of flyIdx.slice().sort((a,b)=>b-a)){ // prefer latest
-      if(B[i].count + e.count <= eff(B[i])){ placed=safeAddEntry(i,e); if(placed) break; }
-      const seen=new Set();
-      if(rippleFree(i, e.count, r, 3, seen)){ placed=safeAddEntry(i,e); if(placed){ e.highlights.add('Ripple move'); break; } }
-      if(!placed){
-        const deficit = e.count - (eff(B[i]) - B[i].count);
-        if(deficit>0 && freeWithHolding(i, deficit)){
-          placed=safeAddEntry(i,e); if(placed){ e.highlights.add('Placed via holding'); break; }
-        }
-      }
-    }
+    // prefer latest Fly first
+    for(const i of flyIdx.slice().sort((a,b)=>b-a)){ if(tryPlaceOnBoat(i,e)){ placed=true; break; } }
     if(!placed){
-      pushMsg('F+R overflow: moved pax into holding; will attempt later.','warn');
-      moveToHold(flyIdx[flyIdx.length-1] ?? (N-1), e, 'F+R overflow → holding');
+      HOLD.pax.push(e); HOLD.count += e.count; e.highlights.add('F+R overflow → holding');
     }
   }
 
-  /* ====== TW units (keep together) ====== */
+  /* ===== Create TW units (keep together), excluding those already assigned via DDI/FR ===== */
   function baseName(clientRaw){ return norm(clientRaw.replace(/\*TW\*.*$/i,'')); }
   function parseTW(row){ const m=row.clientRaw.match(/\*TW\*\s*(.+)$/i); return m?norm(m[1]):null; }
   const byName = new Map();
@@ -585,7 +507,6 @@ function allocate(){
 
   const units=[]; const grouped=new Set();
   for(const r of filtered){
-    // skip those already assigned through DDI/FR steps
     if(assignedTo.has(r._id) || grouped.has(r._id) || r.isDDI || r.isFR) continue;
     if(r.twPartner){
       const partner=(byName.get(norm(r.twPartner))||[]).find(x=>x!==r && !assignedTo.has(x._id) && !grouped.has(x._id) && !x.isDDI && !x.isFR);
@@ -600,112 +521,74 @@ function allocate(){
     units.push(entryFromRows([r], false, []));
   }
 
-  /* ====== Candidate & placement ====== */
+  /* ===== Candidate ranking: closest-to-target boats first ===== */
   function candidateBoats(e){
     const f=flags(e);
     const usable=[...Array(N).keys()].filter(i=>canSeatOnBoat(e,i));
     const t = sectionTargetIndex(f.section, N);
-    usable.sort((a,b)=>Math.abs(a-t)-Math.abs(b-t)||a-b);
+    // rank by closeness to target, then favor earlier for early-flag, else stable
+    usable.sort((a,b)=>{
+      const da=Math.abs(a-t), db=Math.abs(b-t);
+      if(da!==db) return da-db;
+      if(f.wantsEarly) return a-b;
+      return a-b;
+    });
     if(f.preferEE){
       const ee=usable.filter(i=>B[i].tagEE), rest=usable.filter(i=>!B[i].tagEE);
       return [...ee,...rest];
     }
     if(f.isOwnWayOrUnknown){
-      const nonDDI = usable.filter(i=>!B[i].tagDDI);
-      nonDDI.sort((a,b)=>a-b); nonDDI.reverse();
+      const nonDDI = usable.filter(i=>!B[i].tagDDI).sort((a,b)=>b-a);
       return nonDDI.length?nonDDI:usable;
     }
     return usable;
   }
 
-  // allowHolding toggles whether we may push more entries to HOLD to make space
-  function placeUnit(e, allowHolding=true){
-    const f=flags(e);
-    const cands = candidateBoats(e);
-
-    // 1) direct fits
-    for(const i of cands){
-      if(B[i].count + e.count <= eff(B[i])){ return safeAddEntry(i,e); }
-    }
-    // 2) ripple fits
-    for(const i of cands){
-      const seen=new Set();
-      if(rippleFree(i, e.count, f.rep, 3, seen) && B[i].count + e.count <= eff(B[i])){
-        const ok=safeAddEntry(i,e); if(ok){ e.highlights.add('Ripple move'); return true; }
-      }
-    }
-    // 3) holding swap to open room (if allowed)
-    if(allowHolding){
-      for(const i of cands){
-        const deficit = e.count - (eff(B[i]) - B[i].count);
-        if(deficit>0 && freeWithHolding(i, deficit) && B[i].count + e.count <= eff(B[i])){
-          const ok=safeAddEntry(i,e); if(ok){ e.highlights.add('Placed via holding'); return true; }
-        }
-      }
-    }
-    return false;
-  }
-
-  // === Order after TW: largest first (then section, then early-flag, then non-ownway) ===
+  /* ===== Place units — BIGGEST FIRST (after TW/strict) ===== */
   units.sort((A,B_)=>{
-    if(B_.count!==A.count) return B_.count - A.count;  // biggest first
+    if(B_.count!==A.count) return B_.count - A.count;  // biggest groups first
     const a=flags(A), b=flags(B_);
     const sa=secOrder(a.section), sb=secOrder(b.section);
-    if(sa!==sb) return sa-sb;
+    if(sa!==sb) return sa-sb;                            // earlier sections first
     if(a.wantsEarly!==b.wantsEarly) return (b.wantsEarly?1:0)-(a.wantsEarly?1:0);
     if(a.isOwnWayOrUnknown!==b.isOwnWayOrUnknown) return (a.isOwnWayOrUnknown?1:0)-(b.isOwnWayOrUnknown?1:0);
     return 0;
   });
 
-  for(const e of units){
-    if(!placeUnit(e,true)){
-      // couldn't place right now; drop to holding and we’ll drain later
-      HOLD.pax.push(e); HOLD.count += e.count;
-      e.highlights.add('Holding (deferred)');
-    }
+  function placeUnit(e){
+    const cands=candidateBoats(e);
+    // 1) try direct by proximity
+    for(const i of cands){ if(tryPlaceOnBoat(i,e)) return true; }
+    // 2) as last resort, push to holding for later
+    HOLD.pax.push(e); HOLD.count += e.count; e.highlights.add('Holding (deferred)');
+    return false;
   }
 
-  /* ====== SOUTH: *MAP* grouping (applies after initial placement; may use holding) ====== */
+  for(const e of units) placeUnit(e);
+
+  /* ===== SOUTH special: *MAP* grouping after initial placement ===== */
   if (el('tour').value === 'south') {
-    const mapRows = filtered.filter(r=>r.isMAP);
+    const mapRows = filtered.filter(r=>r.isMAP && assignedTo.has(r._id));
     if (mapRows.length) {
       const lastMap = mapRows.reduce((a,b)=> a._csvIndex > b._csvIndex ? a : b);
-      const loc = findRowLocation(B, lastMap._id);
+      const loc = (function findRowLocation(rowId){
+        for (let i=0;i<B.length;i++){
+          for (const e of B[i].pax){ for (const r of e.members){ if(r._id===rowId) return {boat:i}; } }
+        }
+        return null;
+      })(lastMap._id);
       if (loc) {
         const mapBoatIdx = loc.boat;
-        const secondLastIdx = Math.max(0, N-2);
-        const needed = mapRows.reduce((s,r)=>s+(r.num||1),0);
-        const currentOnBoat = countRowsOnBoat(B[mapBoatIdx], r=>r.isMAP);
-        const freeNow = eff(B[mapBoatIdx]) - B[mapBoatIdx].count + currentOnBoat;
-
-        if (freeNow < needed && B[secondLastIdx] && B[secondLastIdx].tagFly) {
-          const frEntries = B[mapBoatIdx].pax.filter(e=>flags(e).isFR);
-          for (const e of frEntries) {
-            if (B[secondLastIdx].count + e.count <= eff(B[secondLastIdx])) {
-              safeMoveWholeEntry(mapBoatIdx, secondLastIdx, e);
-              e.highlights.add('Moved to 2nd-last to make room for *MAP*');
-            } else {
-              const deficit = e.count - (eff(B[secondLastIdx]) - B[secondLastIdx].count);
-              if(deficit>0 && freeWithHolding(secondLastIdx, deficit)){
-                safeMoveWholeEntry(mapBoatIdx, secondLastIdx, e);
-                e.highlights.add('Moved via holding for *MAP*');
-              }
-            }
-          }
-        }
-
-        // Pull MAP entries into mapBoatIdx
+        // Pull any MAP units into mapBoatIdx by freeing with holding as needed
         for (let bi=0; bi<B.length; bi++){
+          if (bi===mapBoatIdx) continue;
           for (let k=B[bi].pax.length-1; k>=0; k--){
             const e=B[bi].pax[k];
-            const hasMAP = e.members.some(m=>m.isMAP);
-            if(hasMAP && bi!==mapBoatIdx){
-              const need=e.count;
-              if (B[mapBoatIdx].count + need <= eff(B[mapBoatIdx]) || rippleFree(mapBoatIdx, need, e.members[0], 2, new Set()) || freeWithHolding(mapBoatIdx, need - (eff(B[mapBoatIdx]) - B[mapBoatIdx].count))){
-                safeMoveWholeEntry(bi, mapBoatIdx, e);
-                e.highlights.add('Grouped into *MAP* boat');
-              }
-            }
+            if(!e.members.some(m=>m.isMAP)) continue;
+            const need=e.count - (eff(B[mapBoatIdx]) - B[mapBoatIdx].count);
+            if (need>0) freeWithHolding(mapBoatIdx, need);
+            safeMoveWholeEntry(bi, mapBoatIdx, e);
+            e.highlights.add('Grouped into *MAP* boat');
           }
         }
       } else {
@@ -714,18 +597,37 @@ function allocate(){
     }
   }
 
-  /* ====== Sanity: unique assignment (no dup rows) ====== */
+  /* ===== Sanity: ensure unique assignment (no dup rows) ===== */
   fixDuplicateAssignments(B, assignedTo);
 
-  /* ====== Drain holding completely (required) ====== */
+  /* ===== Drain holding completely (required) ===== */
+  function tryDrainHoldPass(){
+    let moved=false;
+    // Sort holding by: biggest first, then earlier sections — keeps big blocks near target early
+    HOLD.pax.sort((A,B_)=>{
+      if(B_.count!==A.count) return B_.count - A.count;
+      const a=flags(A), b=flags(B_);
+      const sa=secOrder(a.section), sb=secOrder(b.section);
+      return sa-sb;
+    });
+    for (let h=HOLD.pax.length-1; h>=0; h--){
+      const e=HOLD.pax[h];
+      const cands=candidateBoats(e);
+      let placed=false;
+      for(const i of cands){ if(tryPlaceOnBoat(i,e)){ placed=true; break; } }
+      if(placed){ HOLD.pax.splice(h,1); HOLD.count-=e.count; moved=true; }
+    }
+    return moved;
+  }
+
   let passes=0, progressed=true;
-  while (HOLD.pax.length && progressed && passes<6){
-    progressed = tryDrainHoldOnce();
+  while (HOLD.pax.length && progressed && passes<8){
+    progressed = tryDrainHoldPass();
     passes++;
   }
+
   const unallocated = [];
   if (HOLD.pax.length){
-    // anything left in HOLD cannot be placed within caps → mark unallocated
     for(const e of HOLD.pax){ e.highlights.add('Unallocated (no room after swaps)'); unallocated.push(e); }
     HOLD.pax.length=0; HOLD.count=0;
     pushMsg('Some bookings could not be placed within capacity. See Unallocated.', 'bad');
@@ -826,7 +728,6 @@ function manualMoveRow(rowId, targetBoat){
   if(!loc){ pushMsg('Could not locate row to move.','bad'); return; }
   const e = B[loc.boat].pax[loc.entry];
 
-  // Move whole entry (keeps TW together)
   const f = (function flagsLocal(){
     const any=f=>e.members.some(x=>x[f]);
     const sec=e.members.map(x=>x.section).sort((a,b)=>({'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4}[a]-{'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4}[b]))[0]||'Unknown';
@@ -837,14 +738,8 @@ function manualMoveRow(rowId, targetBoat){
   const ruleViolated = (f.isFR && !tgt.tagFly) || (f.isDDI && !tgt.tagDDI) || (tgt.tagDDI && (f.section==='3rd'||f.section==='4th'||f.section==='Unknown'));
   if(ruleViolated) e.highlights.add('Manual move — rule override');
 
-  const need = e.count;
-  if (runtime.B[targetBoat].count + need > eff(runtime.B[targetBoat])) {
-    // try ripple; if still no space, briefly use holding swap
-    if(!rippleFree(targetBoat, need, f.rep, 1, new Set())){
-      const deficit = need - (eff(runtime.B[targetBoat]) - runtime.B[targetBoat].count);
-      freeWithHolding(targetBoat, deficit);
-    }
-  }
+  const need = e.count - (eff(runtime.B[targetBoat]) - runtime.B[targetBoat].count);
+  if (need>0) freeWithHolding(targetBoat, need); // uses same heuristic
 
   removeEntry(runtime.B, loc.boat, e);
   addEntry(runtime.B, targetBoat, e);
@@ -856,7 +751,7 @@ function manualMoveRow(rowId, targetBoat){
 function rebuildResults(ignoredCharter=[]){
   const results = el('results'); results.innerHTML='';
   if(!runtime){ results.textContent='Nothing to show yet.'; return; }
-  const {B, eff} = runtime;
+  const {B, eff, unallocated} = runtime;
 
   if(ignoredCharter.length) pushMsg(`Ignored ${ignoredCharter.length} charter booking(s).`,'warn');
 
@@ -920,17 +815,51 @@ function rebuildResults(ignoredCharter=[]){
     results.appendChild(table);
   });
 
+  // Unallocated (if any)
+  if (unallocated && unallocated.length){
+    const head=document.createElement('div');
+    head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
+    head.style.margin='16px 0 4px';
+    head.innerHTML = `<div><b>Unallocated</b> &nbsp; <span class="pill bad">${
+      unallocated.reduce((s,e)=>s+e.count,0)
+    } pax</span></div>`;
+    results.appendChild(head);
+
+    const table=document.createElement('table');
+    table.innerHTML = `<thead><tr>
+      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Why</th>
+    </tr></thead>`;
+    const tb=document.createElement('tbody');
+    let rowNumber=0;
+    for(const e of unallocated){
+      const tagHTML = [...e.tags].map(t=>`<span class="pill tag">${t}</span>`).join(' ');
+      const why = [...e.highlights].join('; ');
+      for(const r of e.members){
+        const tr=document.createElement('tr');
+        tr.innerHTML = `
+          <td>${++rowNumber}</td>
+          <td>${escapeHtml(r.clientRaw)}</td>
+          <td>${r.num||1}</td>
+          <td>${escapeHtml(r.pu)}</td>
+          <td>${r.time||''}</td>
+          <td>${r.section}</td>
+          <td>${tagHTML}</td>
+          <td>${escapeHtml(why)}</td>`;
+        tb.appendChild(tr);
+      }
+    }
+    table.appendChild(tb);
+    results.appendChild(table);
+  }
+
   const summary=document.createElement('div'); summary.className='status';
   summary.style.margin='10px 0 0';
   summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalCap}</b>
     ${total>totalCap?'<span class="pill bad" style="margin-left:6px">Over capacity</span>':''}
-    <span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · breathing-room guard</span>`;
+    <span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · holding + section-first + hard cap</span>`;
   results.prepend(summary);
 
-  // Enable drag & drop via delegation (robust across browsers)
   enableDragAndDrop();
-
-  // Hook CSV download to current runtime state
   const dl=document.getElementById('download');
   dl.onclick=()=>downloadCSV(out);
   dl.disabled=false;
@@ -960,7 +889,6 @@ function wire(){
     const text = await f.text();
     const raw = parseCSV(text);
 
-    // IGNORE BLANK ROWS (header may not be first line)
     const headerRowIndex = raw.findIndex(r => !rowIsBlank(r));
     if(headerRowIndex === -1){ setStatus('Empty CSV.'); return; }
     const header = raw[headerRowIndex].map(h=>h.trim());
@@ -973,12 +901,15 @@ function wire(){
     const idxNotes =findColIndex(header,COL_ALIASES.notes);
     const idxPhone =findColIndex(header,COL_ALIASES.phone);
 
-    if(idxClient<0 || idxPU<0){ setStatus('Missing required columns: need at least Client and P/U Point.'); return; }
+    if(idxClient<0 || idxPU<0 || idxNum<0){
+      setStatus('Missing required columns: need Client, No. Pass., and P/U Point.');
+      return;
+    }
 
-    // Parse rows
     const parsed = data.map((r,i)=>{
       const clientRaw = norm(r[idxClient]);
       const numRaw = (idxNum>=0 ? r[idxNum] : '').toString();
+
       const FRfromCount  = /\(\s*F\s*\+\s*R\s*\)/i.test(numRaw);
       const FRfromClient = /\(\s*F\s*\+\s*R\s*\)/i.test(clientRaw);
       const FRfromNotes  = /\(\s*F\s*\+\s*R\s*\)/i.test(norm(idxNotes>=0?r[idxNotes]:'')); 
@@ -996,7 +927,7 @@ function wire(){
       return { clientRaw, num, pu, time, timeMins, notes, phone, flyFromCount: flyFromAny, _csvIndex:i };
     });
 
-    // STRONG de-dup: key on normalized client + pu + HH:MM (or empty) + phone (if present)
+    // strong de-dup: normalized client + pu + HH:MM (or empty) + phone
     const normTime = s=> {
       const m = norm(s); if(!m) return '';
       const mins = parseTimeToSortable(m); if(mins==null) return '';
@@ -1029,7 +960,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus(`Ready. (v=${APP_VERSION} · breathing-room guard)`);
+    setStatus(`Ready. (v=${APP_VERSION} · holding-first + time proximity + hard cap)`);
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
