@@ -1,761 +1,379 @@
 <!DOCTYPE html>
 <html lang="en">
-<head> 
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Ocean Rafting — Boat Split</title>
-<style>
-  :root{
-    --bg:#ffffff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --panel:#ffffff;
-    --brand:#2563eb; --brand-600:#1d4ed8; --shadow:0 6px 18px rgba(0,0,0,.06);
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--ink);
-       font:15px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
-       scrollbar-gutter:stable both-edges;}
-  header{padding:18px 20px;border-bottom:1px solid var(--line);background:#fff}
-  header h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.2px}
-  header p{margin:2px 0 0;color:var(--muted);font-size:13px}
-  .container{max-width:1120px;margin:0 auto;padding:20px 16px 32px;}
-  .section{background:var(--panel);border:1px solid var(--line);border-radius:12px;
-           padding:16px;box-shadow:var(--shadow);margin-bottom:16px;}
-  .section-title{margin:0 0 12px;font-weight:800;letter-spacing:.2px;font-size:13px;color:#374151;text-transform:uppercase;}
-  label{display:block;margin:8px 0 6px;color:#374151}
-  input[type="file"],select,input[type="number"],input[type="text"]{
-    width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);
-    background:#fff;color:#111827;outline:none
-  }
-  input[type="file"]{padding:8px 10px}
-  .muted{color:var(--muted)}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
-  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-  .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;
-       border:1px solid var(--line);background:#fff;color:#111827;cursor:pointer;text-decoration:none}
-  .btn:hover{background:#f3f4f6}
-  .btn-primary{background:var(--brand);border-color:var(--brand);color:#fff}
-  .btn-primary:hover{background:var(--brand-600)}
-  .btn-danger{background:#fff;border-color:#fca5a5;color:#b91c1c}
-  .btn-danger:hover{background:#fee2e2}
-  .btn[disabled]{opacity:.55;cursor:not-allowed}
-  .boats{display:grid;gap:10px;grid-template-columns:1fr}
-  @media(min-width:680px){.boats{grid-template-columns:1fr 1fr}}
-  @media(min-width:980px){.boats{grid-template-columns:1fr 1fr 1fr}}
-  .boat{border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:var(--shadow)}
-  .just{display:flex;justify-content:space-between;align-items:center;gap:8px}
-  .boat h4{margin:0 0 6px;font-size:15px}
-  .controls-inline{display:flex;gap:6px}
-  .row{display:flex;gap:10px;flex-wrap:wrap}
-  .row>*{flex:1 1 120px}
-  .row-tight{gap:6px}
-  .tagline label{display:flex;align-items:center;gap:6px;margin:0}
-  .chips{display:flex;flex-wrap:wrap;gap:6px}
-  .chip{background:#eef2ff;border:1px solid #c7d2fe;color:#1f2937;
-        padding:5px 8px;border-radius:999px;font-size:12px;white-space:nowrap}
-  .pill{display:inline-block;padding:4px 9px;border-radius:999px;border:1px solid var(--line);font-size:12px}
-  .ok{background:#ecfdf5;border-color:#bbf7d0;color:#065f46}
-  .warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
-  .bad{background:#fef2f2;border-color:#fecaca;color:#991b1b}
-  .tag{background:#eff6ff;border-color:#bfdbfe;color:#1e3a8a}
-  table{width:100%;border-collapse:separate;border-spacing:0}
-  thead th{background:#f3f4f6;color:#111827;text-align:left;font-weight:800;border-bottom:1px solid var(--line);padding:10px 8px}
-  tbody td{border-bottom:1px solid var(--line);padding:10px 8px}
-  tbody tr:nth-child(2n){background:#fafafa}
-  tbody tr:hover{background:#f5f5f5}
-  .err{white-space:pre-wrap;background:#fff1f2;color:#881337;border:1px solid #fecdd3;border-radius:10px;padding:10px;margin:12px 0}
-</style>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ocean Rafting — Boat Split</title>
+  <style>
+    :root{
+      --bg:#0b1320; --ink:#f3f6ff; --muted:#9fb0d0; --card:#121a2b; --accent:#7cc4ff; --warn:#ffcf5a; --bad:#ff6b6b; --good:#63e6be;
+    }
+    html,body{height:100%;}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:var(--bg);color:var(--ink);}
+    header{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid #1a2540;position:sticky;top:0;background:linear-gradient(180deg,var(--bg) 0%,rgba(11,19,32,.9) 100%);backdrop-filter: blur(6px);z-index:5}
+    h1{margin:0;font-size:1.1rem;letter-spacing:.3px;color:var(--ink)}
+    .toolbar{display:flex;gap:.5rem;flex-wrap:wrap}
+    button,.pill{background:#18223a;border:1px solid #24335a;color:var(--ink);padding:.55rem .8rem;border-radius:.7rem;font-weight:600;cursor:pointer}
+    button:hover{background:#1b2745}
+    .grid{display:grid;grid-template-columns:repeat(4,minmax(260px,1fr));gap:1rem;padding:1rem;}
+    @media (max-width:1200px){.grid{grid-template-columns:repeat(3,1fr)}}
+    @media (max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+    @media (max-width:640px){.grid{grid-template-columns:1fr}}
+
+    .boat{background:var(--card);border:1px solid #1b2847;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;min-height:280px}
+    .boat header{position:relative;background:linear-gradient(180deg,#14203b,#0e172b);border:0;border-bottom:1px solid #24365f;border-radius:18px 18px 0 0;padding:.75rem .9rem}
+    .boat h2{font-size:1rem;margin:0}
+    .caps{letter-spacing:.08em;text-transform:uppercase;font-size:.72rem;color:var(--muted)}
+    .counts{display:flex;gap:.5rem;align-items:center;margin-top:.35rem}
+    .cap{padding:.15rem .45rem;border-radius:.5rem;background:#0d1a31;border:1px solid #253a6b;font-size:.75rem}
+    .cap.over{background:rgba(255,107,107,.15);border-color:#ff8e8e;color:#ffdede}
+    .droprow{display:flex;flex-direction:column;gap:.5rem;padding:.75rem .75rem 1rem;min-height:140px}
+    .pax{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.55rem .65rem;background:#0e1931;border:1px solid #22335e;border-radius:.65rem}
+    .pax.dragging{opacity:.35}
+    .pax .name{font-weight:650}
+    .badges{display:flex;gap:.3rem;flex-wrap:wrap}
+    .badge{font-size:.7rem;padding:.15rem .4rem;border-radius:.45rem;border:1px solid #2b3e70;background:#0b1429;color:var(--muted)}
+    .badge.DDI{border-color:#ffd166;color:#ffd166;background:rgba(255,209,102,.06)}
+    .badge.FR{border-color:#7cc4ff;color:#a6d9ff;background:rgba(124,196,255,.07)}
+    .badge.MAP{border-color:#63e6be;color:#b2f7e6;background:rgba(99,230,190,.08)}
+    .badge.TW{border-color:#ff9cf0;color:#ffd6fa;background:rgba(255,156,240,.08)}
+    .help{color:var(--muted);font-size:.9rem;padding:0 1rem 1rem}
+    .legend{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+    .legend .badge{opacity:.8}
+  </style>
 </head>
 <body>
-<header>
-  <h1>Boat Split</h1>
-  <p>Upload CSV → tag boats (DDI / Fly / EE) → remove boats (×) → Allocate → Download CSV</p>
-</header>
-
-<main class="container" id="app">
-  <div class="section">
-    <div class="section-title">Upload file</div>
-    <input type="file" id="file" accept=".csv" />
-    <div class="muted" style="margin-top:6px">
-      Columns expected (flexible names): <span class="mono chip">Client</span> <span class="mono chip">No. Pass.</span>
-      <span class="mono chip">P/U Point</span> <span class="mono chip">Time</span> <span class="mono chip">Pickup Notes</span>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Tour & actions</div>
-    <div class="row">
-      <label style="max-width:280px">Tour
-        <select id="tour"><option value="north">Northern</option><option value="south">Southern</option></select>
-      </label>
-    </div>
+  <header>
+    <h1>Ocean Rafting — Boat Split <span class="caps">(Drag to adjust • MAP rule applied)</span></h1>
     <div class="toolbar">
-      <button id="resetBoats" class="btn">Reset boats</button>
-      <button id="run" class="btn btn-primary">Allocate</button>
-      <button id="download" class="btn" disabled>Download CSV</button>
+      <button id="btn-ensure-map">Re‑apply MAP grouping</button>
+      <button id="btn-balance">Auto‑balance (keep DDI & MAP fixed)</button>
+      <span class="pill">Tip: Drag passengers between boats; totals auto‑update.</span>
     </div>
-    <div id="status" class="muted" style="margin-top:10px">Booting…</div>
-    <div id="messages" class="chips" style="margin-top:10px"></div>
-  </div>
+  </header>
 
-  <div class="section">
-    <div class="section-title">Boats in order (earliest → latest)</div>
-    <div class="muted" style="margin-bottom:8px">
-      Reorder (▲/▼), set tags (DDI / Fly-Raft / EE), hold seats, or remove with ×. DDI & Fly are mutually exclusive.
+  <div class="help">
+    <div class="legend">
+      <span class="badge DDI">DDI</span>
+      <span class="badge FR">F+R</span>
+      <span class="badge MAP">MAP</span>
+      <span class="badge TW">TW</span>
+      <span>• Never auto‑move DDI. • MAP must be kept together on the <em>last MAP boat</em>. If space runs out there, the system will first move F+R to earlier boats (never DDI).</span>
     </div>
-    <div id="boats" class="boats"></div>
   </div>
 
-  <div class="section">
-    <div class="section-title">Results</div>
-    <div id="results" class="muted">Upload a CSV and click <b>Allocate</b>.</div>
-  </div>
-</main>
+  <section class="grid" id="boats"></section>
 
-<script>
-"use strict";
-
-/* ========= Error banner ========= */
-window.onerror = (msg, src, line, col, err) => {
-  const host = document.querySelector('#results');
-  const pre = document.createElement('div');
-  pre.className = 'err';
-  pre.textContent = `Script error:\n${msg}\n${src?('at '+src+':'+line+':'+col):''}\n` + (err&&err.stack?err.stack:'');
-  host?.prepend(pre);
-};
-
-/* ========= Helpers ========= */
-const el = id => document.getElementById(id);
-const setStatus = s => { const n=el('status'); if(n) n.textContent = s; };
-const messagesEl = document.getElementById('messages');
-function clearMsgs(){ if(messagesEl) messagesEl.innerHTML=''; }
-function pushMsg(text,tone=''){
-  if(!messagesEl) return;
-  const m=document.createElement('span'); m.className='chip';
-  const col = tone==='ok'?'#16a34a':tone==='warn'?'#f59e0b':tone==='bad'?'#ef4444':'#c7d2fe';
-  m.style.borderColor=col; m.textContent=text; messagesEl.appendChild(m);
-}
-function norm(s){ return (s??'').toString().trim(); }
-function escapeHtml(s){ return (s??'').replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m])); }
-function edgeOrder(n){ const res=[]; for(let a=0,b=n-1;a<=b;a++,b--){ res.push(a); if(b>a) res.push(b);} return res; }
-
-/* ========= Defaults ========= */
-const DEFAULT_BOATS = [
-  { name: "Joyride",        seats: 32, toilet: true },
-  { name: "Thunderstruck",  seats: 32, toilet: true },
-  { name: "Black Betty",    seats: 32, toilet: true },
-  { name: "Wipeout",        seats: 32, toilet: true },
-  { name: "Riptide",        seats: 32, toilet: true },
-  { name: "Thrilla",        seats: 25, toilet: false },
-  { name: "Jammin",         seats: 22, toilet: true },
-  { name: "Wildthing",      seats: 19, toilet: false },
-];
-let boats = [];
-let rows = [];
-let ignoredCharter = [];
-let popups = [];
-
-/* ========= CSV parsing ========= */
-function parseCSV(text){
-  const rows=[]; let cur='',row=[],inQ=false; let i=0;
-  while(i<text.length){ const ch=text[i];
-    if(inQ){ if(ch==='"'){ if(text[i+1]==='"'){cur+='"';i+=2;continue} inQ=false;i++;continue } cur+=ch; i++; continue; }
-    if(ch==='"'){ inQ=true; i++; continue; }
-    if(ch===','){ row.push(cur); cur=''; i++; continue; }
-    if(ch==='\r'){ i++; continue; }
-    if(ch==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; i++; continue; }
-    cur+=ch; i++;
-  }
-  row.push(cur); rows.push(row);
-
-  // Remove any rows that are entirely empty cells (blank lines anywhere in file)
-  return rows.filter(r => r.some(c => norm(c) !== ''));
-}
-const COL_ALIASES = {
-  client:["client","name","full name","passenger","pax name"],
-  num:["no. pass.","no pass","passengers","pax","qty","count"],
-  pu:["p/u point","pickup point","p/u","pick up","pickup","location","p/u address","pickup address"],
-  time:["time","pickup time","p/u time"],
-  notes:["pickup notes","notes","comments","pu comments","p/u notes"],
-  phone:["phone","mobile"]
-};
-function findColIndex(h,keys){
-  const lower=h.map(x=>x.toLowerCase());
-  for(const k of keys){ const i=lower.indexOf(k); if(i!==-1) return i; }
-  for(let i=0;i<lower.length;i++){ if(keys.some(k=>lower[i].includes(k))) return i; }
-  return -1;
-}
-function parseTimeToSortable(t){
-  if(!t) return null; let s=t.toString().trim(); if(!s) return null;
-  s=s.replace('.',':'); const ampm=/am|pm/i.test(s)?s.match(/am|pm/i)[0].toLowerCase():null;
-  s=s.replace(/[^0-9:]/g,''); if(/^\d{3,4}$/.test(s)){ s=(s.length===3?'0'+s:s); s=s.slice(0,2)+':'+s.slice(2); }
-  if(!/^\d{1,2}:\d{2}$/.test(s)) return null;
-  let [hh,mm]=s.split(':').map(n=>parseInt(n,10)); if(ampm){ if(ampm==='pm'&&hh<12)hh+=12; if(ampm==='am'&&hh===12)hh=0; }
-  if(hh>=0&&hh<24&&mm>=0&&mm<60) return hh*60+mm; return null;
-}
-function quartileSection(mins, sortedDistinct){
-  if(mins==null) return 'Unknown'; const n=sortedDistinct.length; if(!n) return 'Unknown';
-  const q1=sortedDistinct[Math.floor(n*.25)], q2=sortedDistinct[Math.floor(n*.50)], q3=sortedDistinct[Math.floor(n*.75)];
-  if(mins<=q1) return '1st'; if(mins<=q2) return '2nd'; if(mins<=q3) return '3rd'; return '4th';
-}
-
-/* ========= Boat colors ========= */
-function boatStyleForName(name){
-  const n=(name||'').toLowerCase();
-  if(n.includes('joyride'))       return { bg:'#ddd6fe', fg:'#1f2937', br:'#c4b5fd' };
-  if(n.includes('black betty'))   return { bg:'#111827', fg:'#ffffff', br:'#0b0f1a' };
-  if(n.includes('thunderstruck')) return { bg:'#fecaca', fg:'#1f2937', br:'#fca5a5' };
-  if(n.includes('wipeout'))       return { bg:'#ffffff', fg:'#111827', br:'#e5e7eb' };
-  if(n.includes('thrilla'))       return { bg:'#fef3c7', fg:'#1f2937', br:'#fde68a' };
-  if(n.includes('jammin'))        return { bg:'#dcfce7', fg:'#1f2937', br:'#bbf7d0' };
-  if(n.includes('wildthing'))     return { bg:'#dbeafe', fg:'#1f2937', br:'#bfdbfe' };
-  if(n.includes('riptide'))       return { bg:'#f1f5f9', fg:'#1f2937', br:'#e2e8f0' };
-  return { bg:'#ffffff', fg:'#111827', br:'#e5e7eb' };
-}
-
-/* ========= Boats UI ========= */
-function cloneBoats(){ return DEFAULT_BOATS.map(b=>({...b, tagDDI:false, tagFly:false, tagEE:false, hold:0 })); }
-
-function renderBoats(){
-  const wrap = document.getElementById('boats');
-  if (!wrap) { setStatus('Boats container missing.'); return; }
-  try{
-    wrap.innerHTML='';
-    if(!boats || !Array.isArray(boats)) boats = [];
-    if(!boats.length) boats = cloneBoats();
-
-    boats.forEach((b,idx)=>{
-      const style = boatStyleForName(b.name);
-      const box=document.createElement('div'); box.className='boat';
-      box.style.background = style.bg;
-      box.style.color = style.fg;
-      box.style.borderColor = style.br;
-
-      box.innerHTML=`
-        <div class="just">
-          <div>
-            <h4 style="color:${style.fg}">${idx+1}. ${b.name} ${b.toilet?'🚻':''}</h4>
-            <div style="font-size:12px; color:${style.fg}">${b.seats} seats${b.toilet?', toilet':''}</div>
-          </div>
-          <div class="controls-inline">
-            <button class="btn" data-act="up" data-idx="${idx}" title="Earlier">▲</button>
-            <button class="btn" data-act="down" data-idx="${idx}" title="Later">▼</button>
-            <button class="btn btn-danger" data-act="remove" data-idx="${idx}" title="Remove boat">×</button>
-          </div>
+  <template id="tmpl-boat">
+    <article class="boat" data-boat="">
+      <header>
+        <h2><span class="bname"></span></h2>
+        <div class="counts">
+          <span class="caps">Capacity:</span>
+          <span class="cap"><span class="cur">0</span>/<span class="max">0</span></span>
         </div>
-        <div class="row row-tight" style="margin-top:8px; align-items:center">
-          <div class="tagline" style="display:flex; gap:10px; flex-wrap:wrap">
-            <label><input type="checkbox" data-act="ddi" data-idx="${idx}" ${b.tagDDI?'checked':''}/> DDI</label>
-            <label><input type="checkbox" data-act="fly" data-idx="${idx}" ${b.tagFly?'checked':''}/> Fly-Raft</label>
-            <label><input type="checkbox" data-act="ee"  data-idx="${idx}" ${b.tagEE?'checked':''}/> EE</label>
-          </div>
-          <div style="flex:1"></div>
-          <label style="margin:0; flex:0 0 160px">Hold seats
-            <input type="number" data-act="hold" data-idx="${idx}" min="0" max="${b.seats}" value="${b.hold||0}" />
-          </label>
-        </div>
-      `;
-      wrap.appendChild(box);
+      </header>
+      <div class="droprow" data-dropzone></div>
+    </article>
+  </template>
+
+  <template id="tmpl-pax">
+    <div class="pax" draggable="true">
+      <span class="name"></span>
+      <div class="badges"></div>
+    </div>
+  </template>
+
+  <script>
+  /**********************
+   * Config & Data Model *
+   **********************/
+  const BOATS = [
+    { id:"joyride",       name:"Joyride",       cap:32 },
+    { id:"thunderstruck", name:"Thunderstruck", cap:32 },
+    { id:"blackbetty",    name:"Black Betty",   cap:32 },
+    { id:"wipeout",       name:"Wipeout",       cap:32 },
+    { id:"riptide",       name:"Riptide",       cap:32 },
+    { id:"thrilla",       name:"Thrilla",       cap:25 },
+    { id:"jammin",        name:"Jammin",        cap:22 },
+    { id:"wildthing",     name:"Wildthing",     cap:19 },
+  ];
+
+  // Example allocated passengers (replace with your pipeline results). Name may include markers like "*MAP*" or "F+R" etc.
+  // Fields: id, name, tags:Set, twKey: string|null (for TW grouping), section: number (arrival bucket)
+  const initialAllocations = {
+    joyride: [
+      pax("P001","*MAP* Alice Brown", ["MAP"], null, 2),
+      pax("P002","F+R Bob Smith", ["FR"], null, 2),
+      pax("P003","DDI Carol James", ["DDI"], null, 1),
+      pax("P004","TW James & Nina (1)", ["TW"], "TW-JN", 2),
+      pax("P005","TW James & Nina (2)", ["TW"], "TW-JN", 2),
+    ],
+    thunderstruck: [
+      pax("P006","*MAP* Charlie Stone", ["MAP"], null, 2),
+      pax("P007","Eve Adams", [], null, 2),
+      pax("P008","F+R Kora Milne", ["FR"], null, 3),
+    ],
+    blackbetty: [
+      pax("P009","F+R Peter Lang", ["FR"], null, 3),
+      pax("P010","Normal Pax", [], null, 3),
+    ],
+    wipeout: [
+      pax("P011","DDI Sam Day", ["DDI"], null, 1),
+      pax("P012","*MAP* Zara Lee", ["MAP"], null, 2),
+    ],
+    riptide: [],
+    thrilla: [],
+    jammin: [],
+    wildthing: [
+      pax("P013","F+R Quinn Roe", ["FR"], null, 3),
+    ],
+  };
+
+  function pax(id, name, tagsArr=[], twKey=null, section=2){
+    const tags = new Set(tagsArr);
+    // Infer tags from name if present
+    const upper = name.toUpperCase();
+    if(/\*?MAP\*?/i.test(name)) tags.add("MAP");
+    if(/\bF\s*\+\s*R\b/i.test(name)) tags.add("FR");
+    if(/\bDDI\b/i.test(name)) tags.add("DDI");
+    if(/\bTW\b|\*TW\*/i.test(name)) tags.add("TW");
+    return { id, name, tags, twKey, section };
+  }
+
+  /**********************
+   * DOM Construction    *
+   **********************/
+  const elGrid = document.getElementById('boats');
+  const boatEls = new Map(); // id -> {root, dropzone, capEl}
+
+  function buildBoats(){
+    elGrid.innerHTML = '';
+    const boatTpl = document.getElementById('tmpl-boat');
+    BOATS.forEach(b=>{
+      const node = boatTpl.content.cloneNode(true);
+      const root = node.querySelector('.boat');
+      const dropzone = node.querySelector('[data-dropzone]');
+      root.dataset.boat = b.id;
+      root.querySelector('.bname').textContent = b.name;
+      root.querySelector('.max').textContent = String(b.cap);
+      addDropzoneDnD(dropzone);
+      elGrid.appendChild(node);
+      boatEls.set(b.id, { root: elGrid.lastElementChild, dropzone: elGrid.lastElementChild.querySelector('[data-dropzone]'), capEl: elGrid.lastElementChild.querySelector('.cap'), max:b.cap });
     });
+  }
 
-    wrap.querySelectorAll('button').forEach(btn=>{
-      btn.onclick=()=>{
-        const idx=+btn.dataset.idx, act=btn.dataset.act;
-        if(act==='up'&&idx>0){ [boats[idx-1],boats[idx]]=[boats[idx],boats[idx-1]]; renderBoats(); }
-        if(act==='down'&&idx<boats.length-1){ [boats[idx+1],boats[idx]]=[boats[idx],boats[idx+1]]; renderBoats(); }
-        if(act==='remove'){ boats.splice(idx,1); renderBoats(); setStatus('Boat removed.'); }
-      };
+  function renderAllocations(alloc){
+    for(const [bid, arr] of Object.entries(alloc)){
+      const b = boatEls.get(bid); if(!b) continue;
+      b.dropzone.innerHTML = '';
+      arr.forEach(p=> b.dropzone.appendChild(renderPax(p)) );
+      updateCount(bid);
+    }
+  }
+
+  function renderPax(p){
+    const tpl = document.getElementById('tmpl-pax');
+    const node = tpl.content.cloneNode(true);
+    const el = node.querySelector('.pax');
+    el.dataset.pid = p.id;
+    el.dataset.tags = JSON.stringify([...p.tags]);
+    el.dataset.tw = p.twKey || '';
+    el.dataset.section = p.section;
+    el.querySelector('.name').textContent = p.name;
+    const badges = el.querySelector('.badges');
+    p.tags.forEach(t=>{
+      const sp = document.createElement('span');
+      sp.className = `badge ${t}`;
+      sp.textContent = t;
+      badges.appendChild(sp);
     });
-    wrap.querySelectorAll('input').forEach(inp=>{
-      inp.onchange=()=>{
-        const idx=+inp.dataset.idx, act=inp.dataset.act;
-        if(act==='ddi'){ boats[idx].tagDDI=inp.checked; if(inp.checked) boats[idx].tagFly=false; }
-        if(act==='fly'){ boats[idx].tagFly=inp.checked; if(inp.checked) boats[idx].tagDDI=false; }
-        if(act==='ee'){ boats[idx].tagEE=inp.checked; }
-        if(act==='hold'){
-          let v=parseInt(inp.value||'0',10); v=isNaN(v)?0:v;
-          v=Math.max(0,Math.min(v,boats[idx].seats)); boats[idx].hold=v; inp.value=String(v);
-        }
-        renderBoats();
-      };
+    addCardDnD(el);
+    return el;
+  }
+
+  /**********************
+   * Drag & Drop         *
+   **********************/
+  let dragging = null;
+  function addCardDnD(card){
+    card.addEventListener('dragstart', (e)=>{
+      dragging = card; card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
     });
-  }catch(e){
-    const errBox=document.createElement('div');
-    errBox.className='err';
-    errBox.textContent='Boats render error: '+ (e && e.stack ? e.stack : String(e));
-    wrap.parentElement.prepend(errBox);
-  }
-}
-
-/* ========= Allocation ========= */
-function allocate(){
-  clearMsgs(); popups = [];
-  if(!rows.length){ setStatus('Please upload a CSV first.'); return; }
-  if(!boats.length){ setStatus('No boats in use. Click "Reset boats".'); return; }
-
-  const B = boats.map(b=>({
-    name:b.name,seats:b.seats,toilet:b.toilet,
-    tagDDI:!!b.tagDDI, tagFly:!!b.tagFly, tagEE:!!b.tagEE,
-    hold: Math.max(0,Math.min(b.hold||0,b.seats)),
-    pax:[], count:0, twGroups:new Set()
-  }));
-  const eff = b => Math.max(0,b.seats-b.hold);
-  const edges = edgeOrder(B.length);
-  const lastIdx = edges[1] ?? (B.length-1);
-  const edgeBoats = edges.map(i=>({i,b:B[i]}));
-  const tagOrder = tag => edgeBoats.filter(o=>o.b[`tag${tag}`]).sort((a,b)=>edges.indexOf(a.i)-edges.indexOf(b.i));
-  function sectionEdgeOrder(section){
-    if(section==='1st'||section==='2nd'){ const wl = edges.filter(i=>i!==lastIdx); return [...wl,lastIdx]; }
-    return edges;
-  }
-  function addPax(i,r,tags=[],hl=[]){
-    const need=r.num||1; const b=B[i];
-    b.pax.push({row:r,count:need,tags:new Set(tags),highlights:new Set(hl)});
-    b.count+=need;
-  }
-
-  const distinct=[...new Set(rows.map(r=>r.timeMins).filter(v=>v!=null))].sort((a,b)=>a-b);
-  rows.forEach(r=>r.section = quartileSection(r.timeMins, distinct));
-
-  // classification helpers
-  const isDDI   = r => /daydream\s*island/i.test(r.pu);
-  const isOwn   = r => /(own\s*way|tbc|not\s*sure|tba)/i.test(r.pu);
-  const isEE    = r => /\bee\b/i.test(r.notes||'');
-  const noteFly = r => /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||'');
-  const hasFR   = r => /\(\s*F\s*\+\s*R\s*\)/i.test(r.clientRaw) || r.flyFromCount || noteFly(r);
-  const earlyBoat = r => /early\s*boat/i.test(r.notes||'');
-  const charter = r => /charter/i.test(r.pu);
-  const wHoldName = r => /\bweather\s*hold\b/i.test(r.clientRaw);
-
-  // rows: remove WEATHER HOLD and charter, but record charter for warning
-  const prepared = rows.slice();
-  ignoredCharter = prepared.filter(r=>charter(r));
-  const filtered = prepared.filter(r=>!wHoldName(r) && !charter(r));
-  const unassigned = new Set(filtered);
-
-  // ====== *TW* parsing/indexing ======
-  function baseName(clientRaw){ return norm(clientRaw.replace(/\*TW\*.*$/i,'')); }
-  function parseTW(row){ const m = row.clientRaw.match(/\*TW\*\s*(.+)$/i); return m?norm(m[1]):null; }
-  const byName = new Map();
-  filtered.forEach(r=>{
-    r.nameClean = baseName(r.clientRaw);
-    r.twPartner = parseTW(r);
-    byName.set(r.nameClean, (byName.get(r.nameClean)||[]).concat([r]));
-  });
-  const twGroups = new Map(); const twErrors=[];
-  filtered.forEach(r=>{
-    if(!r.twPartner) return;
-    const anchor = norm(r.twPartner);
-    const partners = byName.get(anchor) || [];
-    if(partners.length===0){ twErrors.push(`*TW* reference not found: "${r.clientRaw}" → "${anchor}"`); return; }
-    if(partners.length>1){ twErrors.push(`*TW* ambiguous anchor: "${anchor}" — please disambiguate.`); return; }
-    const arr = twGroups.get(anchor)||[];
-    if(!arr.includes(partners[0])) arr.push(partners[0]);
-    if(!arr.includes(r)) arr.push(r);
-    twGroups.set(anchor, arr);
-  });
-  if(twErrors.length){ popups.push(twErrors.join('\n')); }
-
-  filtered.forEach(r=>{ if(isDDI(r)) r.section='1st'; if(hasFR(r)) r.section='Unknown'; });
-
-  /* ===== 1) DDI STRICT ===== */
-  let ddiBoats = tagOrder('DDI');
-  const ddiRows = filtered.filter(isDDI);
-  if(ddiRows.length && ddiBoats.length===0 && B.length){
-    B[0].tagDDI=true; ddiBoats=tagOrder('DDI'); pushMsg('Auto-tagged earliest boat as DDI.','warn');
-  }
-  const ddiCap = ddiBoats.reduce((s,o)=>s+(eff(o.b)-o.b.count),0);
-  const ddiNeed = ddiRows.reduce((s,r)=>s+(r.num||1),0);
-  if(ddiNeed>ddiCap) popups.push('Not enough space on DDI boat(s). Tag another DDI or redo run sheet.');
-  for(const r of ddiRows){
-    if(!unassigned.has(r)) continue; const need=r.num||1;
-    for(const {i} of ddiBoats){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['DDI']); unassigned.delete(r); break; }
-    }
-  }
-
-  /* ===== 2) F+R STRICT ===== */
-  const flyRows = filtered.filter(r=>hasFR(r) && !earlyBoat(r))
-    .sort((a,b)=>{
-      const rank = s => ({'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 5);
-      const ra=rank(a.section), rb=rank(b.section); if(ra!==rb) return ra-rb;
-      return (b.timeMins??-1)-(a.timeMins??-1);
+    card.addEventListener('dragend', ()=>{
+      card.classList.remove('dragging');
+      dragging = null; refreshAllCounts();
     });
-  let flyBoats = tagOrder('Fly');
-  if(flyRows.length && flyBoats.length===0){
-    const last = edges[1] ?? (B.length-1); B[last].tagFly=true; flyBoats=tagOrder('Fly');
-    pushMsg('No Fly boat tagged — auto-tagged latest boat.','warn');
   }
-  const flyCap = flyBoats.reduce((s,o)=>s+(eff(o.b)-o.b.count),0);
-  const flyNeed = flyRows.reduce((s,r)=>s+(r.num||1),0);
-  if(flyNeed>flyCap) popups.push('Not enough space on Fly-Raft boat(s). Tag another Fly-Raft or redo run sheet.');
-  for(const r of flyRows){
-    if(!unassigned.has(r)) continue; const need=r.num||1; let placed=false;
-    for(const {i} of flyBoats.slice().reverse()){ // latest Fly first
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['F+R']); unassigned.delete(r); placed=true; break; }
-    }
-  }
-
-  /* ===== SWAP HELPER (generalised) ===== */
-  function sectionRank(s){ return {'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 0; }
-  function tryMakeRoomWithSwap(targetIdx, need, refSec, requireFly){
-    const target = B[targetIdx];
-    const refRank = sectionRank(refSec);
-    const laterIdx = edges.filter(i => i > targetIdx);
-    let freed = 0;
-    for(let k = target.pax.length - 1; k >= 0 && freed < need; k--){
-      const entry = target.pax[k];
-      const row = entry.row;
-      const cnt = entry.count;
-      const donorRank = sectionRank(row.section);
-      const donorIsDDI = entry.tags.has('DDI') || isDDI(row);
-      const donorIsFR  = entry.tags.has('F+R') || (/\(\s*F\s*\+\s*R\s*\)/i.test(row.clientRaw) || row.flyFromCount || noteFly(row));
-      const donorIsTW  = Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped'));
-      // Only move donors LATER than (or equal to) the reference section rank
-      if(donorRank >= refRank) continue;
-      if(donorIsDDI || donorIsTW) continue; // never move DDI or grouped TW
-      for(const j of laterIdx){
-        const land = B[j];
-        if(land.tagDDI) continue;
-        if(donorIsFR && !land.tagFly) continue;
-        if(land.count + cnt <= eff(land)){
-          target.pax.splice(k,1); target.count -= cnt;
-          addPax(j, row, [...entry.tags], [...entry.highlights, 'SWAP (freed earlier boat)']);
-          freed += cnt; break;
-        }
-      }
-    }
-    return freed >= need;
-  }
-
-  /* ===== 3) *TW* AFTER DDI & F+R ===== */
-  function referenceMember(arr){
-    const known = arr.filter(r=>r.section && r.section!=='Unknown');
-    if(!known.length) return null;
-    return known.sort((a,b)=>{
-      const ra=sectionRank(a.section), rb=sectionRank(b.section);
-      if(rb!==ra) return rb-ra;
-      return (b.timeMins??-1) - (a.timeMins??-1);
-    })[0];
-  }
-  function isFRRow(r){ return hasFR(r); }
-  function isDDIRow(r){ return isDDI(r); }
-
-  for(const [anchor, groupRaw] of new Map(twGroups)){
-    const group = Array.from(new Set(groupRaw));
-    if(group.some(isDDIRow)){
-      popups.push(`*TW* group with "${anchor}" includes a DDI passenger. Consider changing PU times to keep them together.`);
-      continue;
-    }
-    const need = group.reduce((s,r)=>s+(r.num||1),0);
-    const anyFR = group.some(isFRRow);
-    const ref = referenceMember(group);
-    // Candidate boats
-    let candidates = [];
-    if(anyFR){
-      const flyIdx = tagOrder('Fly').map(x=>x.i);
-      if(!flyIdx.length){ popups.push(`*TW* group "${anchor}" requires Fly-Raft but no Fly boat is tagged.`); continue; }
-      if(ref && (ref.section==='1st'||ref.section==='2nd')) candidates = flyIdx.slice(); else candidates = flyIdx.slice().reverse();
-    }else{
-      const notDDI = edges.filter(i=>!B[i].tagDDI);
-      if(ref && (ref.section==='1st'||ref.section==='2nd')){
-        const last = edges[1] ?? (B.length-1);
-        candidates = notDDI.filter(i=>i!==last);
-      }else if(ref && (ref.section==='3rd'||ref.section==='4th')){
-        candidates = notDDI.slice().reverse();
-      }else{
-        candidates = notDDI.slice(1);
-      }
-    }
-    let placedIdx = null;
-    for(const i of candidates){
-      const b = B[i];
-      const capLeft = eff(b) - b.count;
-      if(capLeft >= need){ placedIdx = i; break; }
-      const ok = tryMakeRoomWithSwap(i, need - capLeft, ref ? ref.section : 'Unknown', anyFR);
-      if(ok){ placedIdx = i; break; }
-    }
-    if(placedIdx==null){
-      popups.push(`*TW* group "${anchor}" could not fit on target boat(s)${anyFR?' (Fly-Raft)':''} even after swaps. Tag another boat, reduce holds, or adjust numbers.`);
-      continue;
-    }
-    // Remove existing placements for these rows (if any)
-    for(let bi=0; bi<B.length; bi++){
-      const p=B[bi].pax;
-      for(let k=p.length-1; k>=0; k--){
-        if(group.includes(p[k].row)){ const rem=B[bi].pax.splice(k,1)[0]; B[bi].count -= rem.count; }
-      }
-    }
-    for(const r of group){
-      const tags=[]; if(isFRRow(r)) tags.push('F+R'); if(isEE(r)) tags.push('EE'); if(isDDIRow(r)) tags.push('DDI');
-      addPax(placedIdx, r, tags, ['*TW* grouped (anchored to partner’s section)']);
-      unassigned.delete(r);
-    }
-    B[placedIdx].twGroups.add(anchor);
-  }
-
-  /* ===== 4) EE ===== */
-  let eeBoats = tagOrder('EE');
-  for(const r of filtered.filter(rr=>isEE(rr) && unassigned.has(rr))){
-    const need=r.num||1;
-    const earlyEE = (r.section==='1st'||r.section==='2nd');
-    if(earlyEE && B.length>=3){
-      let placed=false;
-      for(const i of sectionEdgeOrder(r.section)){
-        const b=B[i];
-        if(b.count+need<=eff(b)){
-          const hl = (r.section==='1st') ? ['EE kept early (1st section)'] : [];
-          addPax(i,r,['EE'],hl);
-          unassigned.delete(r);
-          placed=true; break;
-        }
-      }
-      if(placed) continue;
-    }
-    let placed=false;
-    const eeLate = eeBoats.length?eeBoats.slice().reverse():[{i:lastIdx}];
-    for(const {i} of eeLate){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE'],[earlyEE?'Early EE moved later':'']); unassigned.delete(r); placed=true; break; }
-    }
-    if(!placed){
-      for(const {i} of edgeBoats){
-        const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['EE'],['EE by capacity']); unassigned.delete(r); break; }
-      }
-    }
-  }
-
-  /* ===== 5) Baseline fill ===== */
-  const orderSec={'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4};
-  [...unassigned].sort((a,b)=>{
-    const da=orderSec[a.section]??4, db=orderSec[b.section]??4;
-    if(da!==db) return da-db;
-    return (a.timeMins??1e9)-(b.timeMins??1e9);
-  }).forEach(r=>{
-    const need=r.num||1; let placed=false;
-    for(const i of sectionEdgeOrder(r.section)){
-      const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r); placed=true; break; }
-    }
-    if(!placed){
-      for(const {i} of edgeBoats){
-        const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,[],['Capacity fallback']); placed=true; break; }
-      }
-    }
-    if(placed) unassigned.delete(r);
-  });
-
-  /* ===== 6) FINAL FIT — general swap pass for remaining ===== */
-  const still = [...unassigned];
-  for(const r of still){
-    const need=r.num||1;
-    let landed=false;
-    for(const i of sectionEdgeOrder(r.section)){
-      const capLeft = eff(B[i]) - B[i].count;
-      if(capLeft>=need){ addPax(i,r,[],['Final-fit']); landed=true; break; }
-      const ok = tryMakeRoomWithSwap(i, need - capLeft, r.section, hasFR(r));
-      if(ok){ addPax(i,r,[],['Final-fit (swap)']); landed=true; break; }
-    }
-    if(landed) unassigned.delete(r);
-  }
-
-  /* ===== Render output ===== */
-  const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
-  const results = el('results'); results.innerHTML='';
-  let total=0, totalEffCap=0;
-
-  if(ignoredCharter.length){
-    const warn=document.createElement('div');
-    warn.className='err';
-    const list = ignoredCharter.slice(0,10).map(c=>`• ${escapeHtml(c.clientRaw)} (PU: ${escapeHtml(c.pu)})`).join('\n');
-    warn.textContent = `Ignored ${ignoredCharter.length} charter booking(s) — please ensure the charter boat is not being used.\n\nExamples:\n${list}${ignoredCharter.length>10?'\n…':''}`;
-    results.appendChild(warn);
-  }
-
-  B.forEach((b,idx)=>{
-    total+=b.count; totalEffCap+=eff(b);
-    const boatTags=[b.tagDDI?'DDI':'', b.tagFly?'Fly-Raft':'', b.tagEE?'EE':''].filter(Boolean).join('; ');
-    const head=document.createElement('div');
-    head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
-    head.style.margin='8px 0 4px';
-    head.innerHTML = `<div><b>${idx+1}. ${b.name}</b> &nbsp; <span class="pill ${b.count<=eff(b)?'ok':'bad'}">${b.count}/${eff(b)}</span></div>
-      <div class="chips">
-        ${b.tagDDI?'<span class="chip">DDI</span>':''}
-        ${b.tagFly?'<span class="chip">Fly-Raft</span>':''}
-        ${b.tagEE?'<span class="chip">EE</span>':''}
-        ${b.twGroups.size?`<span class="chip">TW groups: ${b.twGroups.size}</span>`:''}
-        ${b.toilet?'<span class="chip">🚻</span>':''}
-      </div>`;
-    results.appendChild(head);
-
-    const table=document.createElement('table');
-    table.innerHTML = `<thead><tr>
-      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Highlights</th>
-    </tr></thead>`;
-    const tb=document.createElement('tbody');
-
-    if(b.hold>0){
-      const tr=document.createElement('tr');
-      tr.innerHTML=`
-        <td>—</td><td>SEAT HOLD</td><td>${b.hold}</td>
-        <td></td><td></td><td></td>
-        <td><span class="pill tag">Hold</span></td>
-        <td><span class="pill warn">Seats reserved; not for allocation</span></td>`;
-      tb.appendChild(tr);
-      out.push([b.name,idx+1,b.hold,boatTags,'SEAT HOLD',b.hold,'','','','','Hold','Seats reserved; not for allocation','']);
-    }
-
-    b.pax.forEach((p,i)=>{
-      const tags=[...p.tags], hl=[...p.highlights];
-      const tr=document.createElement('tr');
-      tr.innerHTML = `
-        <td>${i+1}</td>
-        <td>${escapeHtml(p.row.clientRaw)}</td>
-        <td>${p.count}</td>
-        <td>${escapeHtml(p.row.pu)}</td>
-        <td>${p.row.time||''}</td>
-        <td>${p.row.section}</td>
-        <td>${tags.map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
-        <td>${hl.filter(Boolean).map(t=>`<span class="pill warn">${escapeHtml(t)}</span>`).join(' ')}</td>`;
-      tb.appendChild(tr);
-      out.push([b.name,idx+1,b.hold,boatTags,p.row.clientRaw,p.count,p.row.pu,p.row.time||'',p.row.notes||'',p.row.phone||'',tags.join('; '),hl.filter(Boolean).join('; '),p.row.section]);
+  function addDropzoneDnD(zone){
+    zone.addEventListener('dragover', (e)=>{
+      e.preventDefault();
+      const after = getDragAfterElement(zone, e.clientY);
+      if(!dragging) return;
+      if(after==null) zone.appendChild(dragging); else zone.insertBefore(dragging, after);
     });
-    table.appendChild(tb);
-    results.appendChild(table);
-  });
-
-  /* ===== Overflow / Holding boat (ensures every booking is present) ===== */
-  const overflow = [...unassigned];
-  if(overflow.length){
-    const style = { name:'Overflow (Review)', pillClass:'bad', tip:'Unplaced — adjust holds/tags or add boat' };
-    const head=document.createElement('div');
-    head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
-    head.style.margin='12px 0 6px';
-    head.innerHTML = `<div><b>⚠ ${style.name}</b> &nbsp; <span class="pill ${style.pillClass}">${overflow.reduce((s,r)=>s+(r.num||1),0)} pax</span></div>
-      <div class="chips"><span class="chip">${style.tip}</span></div>`;
-    results.appendChild(head);
-
-    const table=document.createElement('table');
-    table.innerHTML = `<thead><tr>
-      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Why</th>
-    </tr></thead>`;
-    const tb=document.createElement('tbody');
-    overflow.forEach((r,i)=>{
-      const tags=[];
-      if(isDDI(r)) tags.push('DDI');
-      if(hasFR(r)) tags.push('F+R');
-      if(isEE(r))  tags.push('EE');
-      const tr=document.createElement('tr');
-      tr.innerHTML = `
-        <td>${i+1}</td>
-        <td>${escapeHtml(r.clientRaw)}</td>
-        <td>${r.num||1}</td>
-        <td>${escapeHtml(r.pu)}</td>
-        <td>${r.time||''}</td>
-        <td>${r.section}</td>
-        <td>${tags.map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
-        <td><span class="pill bad">No capacity after swaps</span></td>`;
-      tb.appendChild(tr);
-      out.push(['OVERFLOW', '', '', '', r.clientRaw, r.num||1, r.pu, r.time||'', r.notes||'', r.phone||'', tags.join('; '), 'Unplaced after swap-pass', r.section]);
-    });
-    table.appendChild(tb); results.appendChild(table);
+    zone.addEventListener('drop', ()=>{ refreshAllCounts(); });
+  }
+  function getDragAfterElement(container, y){
+    const els = [...container.querySelectorAll('.pax:not(.dragging)')];
+    return els.reduce((closest, child)=>{
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height/2;
+      if(offset < 0 && offset > closest.offset){ return { offset, element: child }; }
+      else return closest;
+    }, {offset: Number.NEGATIVE_INFINITY}).element;
   }
 
-  const summary=document.createElement('div'); summary.className='status';
-  summary.style.margin='10px 0 0';
-  const totalOverflow = overflow.reduce((s,r)=>s+(r.num||1),0);
-  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}
-  ${totalOverflow?` — Overflow (review): <b>${totalOverflow}</b>`:''}`;
-  results.prepend(summary);
-
-  // CSV Download
-  const safeToCSV = rows => rows.map(r=>r.map(v=>{
-    if(v==null) return '';
-    const s=String(v);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
-  }).join(',')).join('\n');
-  const csv = safeToCSV(out);
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob);
-  const dl=document.getElementById('download');
-  dl.onclick=()=>{ const stamp=new Date().toISOString().slice(0,10); const a=document.createElement('a'); a.href=url; a.download=`boat-split-${document.getElementById('tour').value}-${stamp}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
-  dl.disabled=false;
-  setStatus('Allocation complete.');
-
-  if(popups.length) alert(popups.join('\n\n'));
-}
-
-/* ========= Wiring ========= */
-function wire(){
-  el('resetBoats').onclick=()=>{ boats=cloneBoats(); renderBoats(); setStatus('Boats reset.'); };
-  el('run').onclick=allocate;
-
-  el('file').addEventListener('change', async e=>{
-    clearMsgs(); popups=[]; ignoredCharter = [];
-    const f=e.target.files?.[0]; if(!f) return;
-    const text = await f.text();
-    const raw = parseCSV(text);
-    if(!raw.length){ setStatus('Empty CSV.'); return; }
-
-    const header = raw[0].map(h=>h.trim());
-    const data = raw.slice(1);
-
-    const idxClient=findColIndex(header,COL_ALIASES.client);
-    const idxNum   =findColIndex(header,COL_ALIASES.num);
-    const idxPU    =findColIndex(header,COL_ALIASES.pu);
-    const idxTime  =findColIndex(header,COL_ALIASES.time);
-    const idxNotes =findColIndex(header,COL_ALIASES.notes);
-    const idxPhone =findColIndex(header,COL_ALIASES.phone);
-
-    if(idxClient<0 || idxPU<0){ setStatus('Missing required columns: need at least Client and P/U Point.'); return; }
-
-    const prepared = data
-      .filter(r => r.some(c => norm(c) !== '')) // ignore blank rows anywhere
-      .map(r=>{
-        const clientRaw = norm(r[idxClient]);
-        const numRaw = (r[idxNum]??'').toString();
-        const FRfromCount  = /\(\s*F\s*\+\s*R\s*\)/i.test(numRaw);
-        const FRfromClient = /\(\s*F\s*\+\s*R\s*\)/i.test(clientRaw);
-        const FRfromNotes  = /\(\s*F\s*\+\s*R\s*\)/i.test(norm(idxNotes>=0?r[idxNotes]:'')); 
-        const flyFromAny   = FRfromCount || FRfromClient || FRfromNotes;
-
-        const numMatch = numRaw.match(/\d+/);
-        const num = Math.max(1, numMatch ? parseInt(numMatch[0],10) : 1);
-
-        const pu   = norm(r[idxPU]);
-        const time = norm(idxTime>=0?r[idxTime]:'');
-        const notes= norm(idxNotes>=0?r[idxNotes]:'');
-        const phone= norm(idxPhone>=0?r[idxPhone]:'');
-        const timeMins = parseTimeToSortable(time);
-
-        return { clientRaw, num, pu, time, timeMins, notes, phone, flyFromCount: flyFromAny };
+  /**********************
+   * Helpers             *
+   **********************/
+  function readState(){
+    const state = {};
+    for(const {root, dropzone} of boatEls.values()){
+      const id = root.dataset.boat; state[id] = [];
+      dropzone.querySelectorAll('.pax').forEach(el=>{
+        state[id].push({
+          id: el.dataset.pid,
+          name: el.querySelector('.name').textContent,
+          tags: new Set(JSON.parse(el.dataset.tags||'[]')),
+          twKey: el.dataset.tw || null,
+          section: Number(el.dataset.section||2)
+        });
       });
+    }
+    return state;
+  }
 
-    ignoredCharter = prepared.filter(x=>/charter/i.test(x.pu));
-    rows = prepared.filter(x=>!/charter/i.test(x.pu) && !/\bweather\s*hold\b/i.test(x.clientRaw));
+  function refreshAllCounts(){ BOATS.forEach(b=> updateCount(b.id)); }
 
-    if(ignoredCharter.length){
-      pushMsg(`Ignored ${ignoredCharter.length} charter booking(s). Ensure charter boat is not used.`,`warn`);
+  function updateCount(boatId){
+    const b = boatEls.get(boatId); if(!b) return; 
+    const cur = b.dropzone.querySelectorAll('.pax').length;
+    const max = b.max;
+    b.capEl.querySelector('.cur').textContent = String(cur);
+    b.capEl.classList.toggle('over', cur>max);
+  }
+
+  function boatOrderIndex(boatId){ return BOATS.findIndex(b=>b.id===boatId); }
+
+  /**********************
+   * MAP Grouping Logic  *
+   **********************/
+  function ensureMAPTogether(){
+    const state = readState();
+    // 1) Gather all MAP pax and where they are
+    const mapEntries = [];
+    for(const [bid, paxArr] of Object.entries(state)){
+      paxArr.forEach(p=>{ if(p.tags.has('MAP')) mapEntries.push({boatId:bid, pax:p}); });
+    }
+    if(mapEntries.length===0){ refreshAllCounts(); return; }
+
+    // 2) Choose the "last MAP boat": the MAP-carrying boat with the highest order index, else the last boat overall
+    let lastMapBoat = null;
+    const withMap = [...new Set(mapEntries.map(x=>x.boatId))];
+    if(withMap.length>0){
+      lastMapBoat = withMap.sort((a,b)=> boatOrderIndex(b)-boatOrderIndex(a))[0];
+    } else {
+      lastMapBoat = BOATS[BOATS.length-1].id;
     }
 
-    el('results').innerHTML='<span class="muted">File loaded. Configure boats, then <b>Allocate</b>.</span>';
-    el('download').disabled=true;
-    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready. (v=overflow-swap-pass)`);
-  });
-}
+    // 3) Move all MAP pax into lastMapBoat, making room by evicting first FR then others (never DDI)
+    const target = boatEls.get(lastMapBoat);
+    if(!target) return;
 
-/* ========= Boot ========= */
-function init(){
-  try{
-    boats = cloneBoats();
-    renderBoats();
-    wire();
-    setStatus('Ready. (v=overflow-swap-pass)');
-  }catch(e){
-    const host = document.querySelector('#results');
-    const pre = document.createElement('div');
-    pre.className='err';
-    pre.textContent='Init error: '+(e&&e.stack?e.stack:String(e));
-    host?.prepend(pre);
+    // Collect MAP pax nodes and append to target
+    const needed = mapEntries.map(x=> document.querySelector(`.pax[data-pid="${x.pax.id}"]`) ).filter(Boolean);
+    needed.forEach(node=> target.dropzone.appendChild(node));
+
+    // 4) If over capacity, push out candidates (prefer FR) to earlier boats with space; never DDI; never evict MAP
+    function currentCount(){ return target.dropzone.querySelectorAll('.pax').length; }
+    const maxCap = target.max;
+
+    const candidates = [...target.dropzone.querySelectorAll('.pax')]
+      .map(el=>({el, tags:new Set(JSON.parse(el.dataset.tags||'[]'))}))
+      .filter(x=> !x.tags.has('MAP') && !x.tags.has('DDI'));
+
+    const FRfirst = candidates.filter(x=> x.tags.has('FR'));
+    const others = candidates.filter(x=> !x.tags.has('FR'));
+
+    const toEvict = [...FRfirst, ...others];
+
+    for(const cand of toEvict){
+      if(currentCount()<=maxCap) break;
+      const placed = moveToEarlierBoat(cand.el);
+      if(!placed){
+        // If cannot place earlier, try any other boat with space (still avoiding later than target to keep MAP as last group)
+        const anyPlaced = moveToAnyBoatWithSpace(cand.el, /*preferEarlier=*/true);
+        if(!anyPlaced){ break; }
+      }
+    }
+
+    refreshAllCounts();
   }
-}
-if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', init); } else { init(); }
-</script>
+
+  function moveToEarlierBoat(card){
+    // Try earlier boats by order index that have free capacity and allow tag constraints
+    const fromBoat = card.closest('.boat').dataset.boat;
+    const fromIdx = boatOrderIndex(fromBoat);
+    for(let i=0; i<fromIdx; i++){
+      const bid = BOATS[i].id; const b = boatEls.get(bid);
+      if(!b) continue;
+      if(b.dropzone.querySelectorAll('.pax').length < b.max){
+        // Respect DDI immovable rule only for FROM, not necessary here as we filtered them out
+        b.dropzone.appendChild(card); return true;
+      }
+    }
+    return false;
+  }
+  function moveToAnyBoatWithSpace(card, preferEarlier=false){
+    const fromBoat = card.closest('.boat').dataset.boat;
+    const order = [...BOATS];
+    if(preferEarlier){ order.sort((a,b)=> boatOrderIndex(a.id)-boatOrderIndex(b.id)); }
+    for(const binfo of order){
+      if(binfo.id===fromBoat) continue;
+      const b = boatEls.get(binfo.id);
+      if(!b) continue;
+      if(b.dropzone.querySelectorAll('.pax').length < b.max){ b.dropzone.appendChild(card); return true; }
+    }
+    return false;
+  }
+
+  /**********************
+   * Auto‑balance (optional)
+   **********************/
+  function autoBalance(){
+    // Keeps DDI and MAP fixed; shift FR and normal earlier to relieve overflows
+    const state = readState();
+    // Pass 1: If any boat over cap, move out FR then others to earlier boats
+    for(const binfo of BOATS){
+      const b = boatEls.get(binfo.id); if(!b) continue;
+      while(b.dropzone.querySelectorAll('.pax').length > b.max){
+        const rows = [...b.dropzone.querySelectorAll('.pax')].map(el=>({el, tags:new Set(JSON.parse(el.dataset.tags||'[]'))}));
+        const movable = rows.filter(r=> !r.tags.has('DDI') && !r.tags.has('MAP'));
+        const FRfirst = movable.filter(r=> r.tags.has('FR'));
+        const others = movable.filter(r=> !r.tags.has('FR'));
+        const cand = (FRfirst[0] || others[0]);
+        if(!cand) break; // can't move further, give up
+        if(!moveToEarlierBoat(cand.el)){
+          if(!moveToAnyBoatWithSpace(cand.el, true)) break;
+        }
+      }
+    }
+    refreshAllCounts();
+  }
+
+  /**********************
+   * Boot                *
+   **********************/
+  function boot(){
+    buildBoats();
+    renderAllocations(initialAllocations);
+    ensureMAPTogether();
+    document.getElementById('btn-ensure-map').addEventListener('click', ensureMAPTogether);
+    document.getElementById('btn-balance').addEventListener('click', autoBalance);
+  }
+  document.addEventListener('DOMContentLoaded', boot);
+  </script>
 </body>
 </html>
