@@ -738,7 +738,7 @@ function allocate(){
   // Render
   rebuildResults(ignoredCharter);
 }
-// === Balance-forward pass (self-contained; no external helpers needed) ===
+// === Balance-forward pass (safe, bounded, breaks on success) ===
 function balanceForward(B, eff, N){
   const secOrd = s => ({'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4}[s] ?? 4);
   const sectionTargetIndex = (section, n)=>{
@@ -749,20 +749,18 @@ function balanceForward(B, eff, N){
     return n-1; // Unknown → latest
   };
 
-  // derive section/DDI/FR from entry members (your rows already carry these flags)
   function entryFlags(e){
     let isFR=false, isDDI=false, sec='Unknown';
     for(const m of e.members||[]){
       if(m && m.isFR)  isFR = true;
       if(m && m.isDDI) isDDI = true;
+      if(m && m.section){
+        if(sec==='Unknown' || secOrd(m.section) < secOrd(sec)) sec = m.section;
+      }
     }
-    // entry section = earliest (best) section among members
-    const secs = (e.members||[]).map(m=>m.section||'Unknown').sort((a,b)=>secOrd(a)-secOrd(b));
-    if(secs.length) sec = secs[0];
     return { section:sec, isFR, isDDI };
   }
 
-  // obey boat tags / rules
   function canSeatOnBoatLocal(e, idx){
     const b = B[idx], f = entryFlags(e);
     if (f.isFR && !b.tagFly) return false;                          // Fly strictly on Fly boat
@@ -771,19 +769,15 @@ function balanceForward(B, eff, N){
     return true;
   }
 
-  // try to push later/looser-fit entries from boat j → later boats to free 'need' seats
   function tryFreeOnBoatByPushingLater(j, need, avoidIdx){
     let freed = 0;
-    // candidates: entries that are same-or-later section compared to what we want to bring in (decide per call)
-    // here we just prefer later section overall
     const cands = B[j].pax.slice().sort((a,b)=>{
       const sa=secOrd(entryFlags(a).section), sb=secOrd(entryFlags(b).section);
       if (sb!==sa) return sb-sa;
-      return b.count - a.count; // larger first
+      return b.count - a.count;
     });
 
     for (const e of cands){
-      // try to place this entry further right
       for (let t=j+1; t<N; t++){
         if (t===avoidIdx) continue;
         if (!canSeatOnBoatLocal(e, t)) continue;
@@ -799,13 +793,10 @@ function balanceForward(B, eff, N){
     return freed >= need;
   }
 
-  // try bundle swap between j (earlier) and i (later): move a set from j→i to open room for e (from i→j)
   function tryBundleSwap(i, j, e){
     const eFlags = entryFlags(e);
     const need = e.count;
 
-    // choose bundle from j that (a) can sit on i, (b) is same-or-later section than e,
-    // (c) prefer later sections and larger groups
     const bundleCands = B[j].pax.filter(c=>{
       const fc = entryFlags(c);
       return secOrd(fc.section) >= secOrd(eFlags.section) && canSeatOnBoatLocal(c, i);
@@ -831,16 +822,24 @@ function balanceForward(B, eff, N){
     return true;
   }
 
-  // main: walk boats right→left pulling early-section entries forward
+  // main: pull earlier-section entries forward; guard against excessive churn
+  const MAX_MOVES_PER_ENTRY = 3;
+
   for (let i = N-1; i > 0; i--){
-    // iterate safely because we might remove entries from this array
+    // iterate with index since we mutate B[i].pax
     for (let k = 0; k < B[i].pax.length; k++){
       const e = B[i].pax[k];
+      // stash per-entry move counter
+      if (e.__bf_moves == null) e.__bf_moves = 0;
+      if (e.__bf_moves >= MAX_MOVES_PER_ENTRY) continue;
+
       const f = entryFlags(e);
       const target = sectionTargetIndex(f.section, N);
-      if (i <= target) continue; // not later than its ideal → OK
+      if (i <= target) continue; // already early enough
 
-      // try to move e to the closest feasible boat j ∈ [target..i-1]
+      let movedOut = false;
+
+      // try each earlier boat from i-1 down to target
       for (let j = i-1; j >= target; j--){
         if (!canSeatOnBoatLocal(e, j)) continue;
 
@@ -848,29 +847,38 @@ function balanceForward(B, eff, N){
         if (B[j].count + e.count <= eff(B[j])){
           removeEntry(B, i, e); addEntry(B, j, e);
           e.highlights?.add?.('Balanced earlier');
-          k--; // we removed current e from B[i], adjust index
-          break;
+          e.__bf_moves++; movedOut = true;
+          k--; // adjust iteration because we removed current e from B[i]
+          break; // IMPORTANT: stop scanning j after success
         }
 
-        // 2) try to free capacity on j by pushing later entries right
+        // 2) free capacity on j by pushing later entries right
         const need = e.count - (eff(B[j]) - B[j].count);
         if (need > 0){
           if (tryFreeOnBoatByPushingLater(j, need, i) && B[j].count + e.count <= eff(B[j])){
             removeEntry(B, i, e); addEntry(B, j, e);
             e.highlights?.add?.('Balanced earlier (freed)');
+            e.__bf_moves++; movedOut = true;
             k--;
-            break;
+            break; // IMPORTANT
           }
         }
 
         // 3) bundle swap between j (earlier) and i (later)
         if (tryBundleSwap(i, j, e)){
-          k--; // e moved out of B[i]
-          break;
+          e.__bf_moves++; movedOut = true;
+          k--; // e left B[i]
+          break; // IMPORTANT
         }
       }
+
+      // if we successfully moved e out of boat i, stop processing that e in this i-loop
+      if (movedOut) continue;
     }
   }
+
+  // cleanup private counters
+  for (const b of B){ for (const e of b.pax){ delete e.__bf_moves; } }
 }
 
 
