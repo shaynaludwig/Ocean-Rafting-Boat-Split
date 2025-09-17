@@ -674,7 +674,7 @@ function renderResults(){
 
     const table=document.createElement('table');
     table.innerHTML = `<thead><tr>
-      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Highlights</th><th>Move to</th>
+      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>PU Comments</th><th>Section</th><th>Tags</th><th>Highlights</th><th>Move to</th>
     </tr></thead>`;
     const tb=document.createElement('tbody');
 
@@ -682,7 +682,7 @@ function renderResults(){
       const tr=document.createElement('tr');
       tr.innerHTML=`
         <td>—</td><td>SEAT HOLD</td><td>${b.hold}</td>
-        <td></td><td></td><td></td>
+        <td></td><td></td><td></td><td></td>
         <td><span class="pill tag">Hold</span></td>
         <td><span class="pill warn">Seats reserved; not for allocation</span></td>
         <td></td>`;
@@ -699,6 +699,7 @@ function renderResults(){
         <td>${p.count}</td>
         <td>${escapeHtml(p.row.pu)}</td>
         <td>${p.row.time||''}</td>
+        <td title="${escapeHtml(p.row.notes||'')}">${escapeHtml(p.row.notes||'')}</td>
         <td>${p.row.section}</td>
         <td>${tags.map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
         <td>${Array.from(new Set(hl)).filter(Boolean).map(t=>`<span class="pill warn">${escapeHtml(t)}</span>`).join(' ')}</td>
@@ -729,7 +730,7 @@ function renderResults(){
     const boatOpts = B.map((bb,bi)=>`<option value="${bi}">${bi+1}. ${escapeHtml(bb.name)}</option>`).join('');
     const table=document.createElement('table');
     table.innerHTML = `<thead><tr>
-      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Why</th><th>Move to</th>
+      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>PU Comments</th><th>Section</th><th>Tags</th><th>Why</th><th>Move to</th>
     </tr></thead>`;
     const tb=document.createElement('tbody');
 
@@ -746,6 +747,7 @@ function renderResults(){
         <td>${r.num||1}</td>
         <td>${escapeHtml(r.pu)}</td>
         <td>${r.time||''}</td>
+        <td title="${escapeHtml(r.notes||'')}">${escapeHtml(r.notes||'')}</td>
         <td>${r.section}</td>
         <td>${tags.map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
         <td><span class="pill bad">No capacity after swaps</span></td>
@@ -757,6 +759,7 @@ function renderResults(){
           <button class="btn btn-xxs" data-move-row="1" data-uid="${r._uid}">Move</button>
         </td>`;
       tb.appendChild(tr);
+      out.push(['OVERFLOW', '', '', '', r.clientRaw, r.num||1, r.pu, r.time||'', r.notes||'', r.phone||'', tags.join('; '), 'Unplaced after swap-pass', r.section]);
     });
 
     table.appendChild(tb); results.appendChild(table);
