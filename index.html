@@ -7,7 +7,7 @@
 
 <!-- Cache buster -->
 <script>
-  const APP_VERSION = '2025-09-17-exactfit-balance';
+  const APP_VERSION = '2025-09-17-breathing-room';
   (function(){
     try{
       const u = new URL(location.href);
@@ -321,10 +321,12 @@ function allocate(){
     name:b.name,seats:b.seats,toilet:b.toilet,
     tagDDI:!!b.tagDDI, tagFly:!!b.tagFly, tagEE:!!b.tagEE,
     hold: Math.max(0,Math.min(b.hold||0,b.seats)),
+    tempHold: 0,               // INTERNAL breathing room (released at end)
     pax:[], count:0
   }));
   const N = B.length;
-  const eff = b => Math.max(0,b.seats - b.hold);
+  // NOTE: eff now includes tempHold to create breathing-room when needed
+  const eff = b => Math.max(0,b.seats - b.hold - (b.tempHold||0));
 
   // Sections
   const distinct=[...new Set(rows.map(r=>r.timeMins).filter(v=>v!=null))].sort((a,b)=>a-b);
@@ -360,6 +362,18 @@ function allocate(){
 
   const totalNeed = filtered.reduce((s,r)=>s+(r.num||1),0);
   const totalEffCap = B.reduce((s,b)=>s+eff(b),0);
+
+  // ===== Breathing-room guard: when totalNeed === totalEffCap, reserve 1 seat temporarily =====
+  let tempHoldIdx = -1;
+  if (totalNeed === totalEffCap && N) {
+    // Prefer the latest non-DDI boat, else the latest boat
+    let i = N - 1;
+    for (; i >= 0; i--) if (!B[i].tagDDI) break;
+    if (i < 0) i = N - 1;
+    B[i].tempHold = 1; // invisible reserve
+    tempHoldIdx = i;
+    pushMsg(`Applied one-seat breathing room on ${B[i].name} to avoid zero-slack deadlock.`, 'ok');
+  }
 
   // Section target → boat index
   function sectionTargetIndex(section, n){
@@ -446,11 +460,13 @@ function allocate(){
   }
 
   /* ====== Strong single-assignment guard ====== */
+  // Each row gets a unique _id and can only be assigned ONCE.
   filtered.forEach(r=>{ if(!r._id) r._id = Math.random().toString(36).slice(2); });
   const assignedTo = new Map(); // rowId -> boatIdx
   function safeAddEntry(boatIdx, e){
+    // prune any already-assigned members (prevents dupes)
     const fresh = e.members.filter(m => !assignedTo.has(m._id));
-    if(!fresh.length) return false;                 // NEW: ignore empty entries
+    if(!fresh.length) return false;
     e.members = fresh;
     e.count = fresh.reduce((s,x)=>s+(x.num||1),0);
     addEntry(B, boatIdx, e);
@@ -541,6 +557,7 @@ function allocate(){
       return [...ee,...rest];
     }
     if(f.isOwnWayOrUnknown){
+      // prefer latest non-DDI
       const nonDDI = usable.filter(i=>!B[i].tagDDI);
       nonDDI.sort((a,b)=>a-b); nonDDI.reverse();
       return nonDDI.length?nonDDI:usable;
@@ -551,14 +568,6 @@ function allocate(){
   function placeUnit(e){
     const f=flags(e);
     const cands = candidateBoats(e);
-
-    // >>> NEW: Exact-fit short-circuit (prevents needless ripple in exact-total cases)
-    for(const i of cands){
-      const rem = eff(B[i]) - B[i].count;
-      if(rem === e.count){ return safeAddEntry(i,e); }
-    }
-
-    // Normal pass with gentle ripple
     for(const i of cands){
       if(B[i].count + e.count <= eff(B[i])){ return safeAddEntry(i,e); }
       const seen=new Set();
@@ -582,7 +591,7 @@ function allocate(){
 
   for(const e of units) placeUnit(e);
 
-  /* ====== SOUTH: *MAP* grouping ====== */
+  /* ====== SOUTH: *MAP* group handling ====== */
   if (el('tour').value === 'south') {
     const mapRows = filtered.filter(r=>r.isMAP);
     if (mapRows.length) {
@@ -595,7 +604,8 @@ function allocate(){
         const currentOnBoat = countRowsOnBoat(B[mapBoatIdx], r=>r.isMAP);
         const freeNow = eff(B[mapBoatIdx]) - B[mapBoatIdx].count + currentOnBoat;
 
-        if (freeNow < needed && B[secondLastIdx] && secondLastIdx!==mapBoatIdx && B[secondLastIdx].tagFly) {
+        // Move F+R out if short on space and second-last is Fly
+        if (freeNow < needed && B[secondLastIdx] && B[secondLastIdx].tagFly) {
           const frEntries = B[mapBoatIdx].pax.filter(e=>flags(e).isFR);
           for (const e of frEntries) {
             if (B[secondLastIdx].count + e.count <= eff(B[secondLastIdx])) {
@@ -605,6 +615,7 @@ function allocate(){
           }
         }
 
+        // Pull all MAP rows into mapBoatIdx (move whole entry if contains any MAP)
         for (let bi=0; bi<B.length; bi++){
           for (let k=B[bi].pax.length-1; k>=0; k--){
             const e=B[bi].pax[k];
@@ -627,9 +638,41 @@ function allocate(){
   /* ====== Sanity: ensure unique assignment (no dup rows) ====== */
   fixDuplicateAssignments(B, assignedTo);
 
-  /* ====== NEW: Final auto-balance (guarantees feasible layout when totalNeed ≤ totalEffCap) ====== */
-  if (totalNeed <= totalEffCap) {
-    autoBalance(B);
+  // ===== Release breathing-room temp hold (if any) and fill the freed seat =====
+  function tryFillFreedSeat(targetIdx) {
+    const free = eff(B[targetIdx]) - B[targetIdx].count;
+    if (free <= 0) return;
+
+    function tryMoveFromBoat(fromIdx) {
+      const candidates = B[fromIdx].pax.filter(e => !e.locked).slice()
+        .sort((a,b) => a.count - b.count);
+      for (const e of candidates) {
+        if (e.count <= free && canSeatOnBoat(e, targetIdx)) {
+          if (B[targetIdx].count + e.count > eff(B[targetIdx])) {
+            rippleFree(targetIdx, e.count, flags(e).rep, 2, new Set());
+          }
+          if (B[targetIdx].count + e.count <= eff(B[targetIdx])) {
+            safeMoveWholeEntry(fromIdx, targetIdx, e);
+            e.highlights.add('Final fill (breathing seat release)');
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    const order = [...Array(B.length).keys()]
+      .filter(i => i !== targetIdx)
+      .sort((a,b) => Math.abs(a - targetIdx) - Math.abs(b - targetIdx));
+
+    for (const bi of order) {
+      if (tryMoveFromBoat(bi)) break;
+    }
+  }
+
+  if (tempHoldIdx !== -1) {
+    B[tempHoldIdx].tempHold = 0;
+    tryFillFreedSeat(tempHoldIdx);
   }
 
   // Expose runtime for DnD/CSV
@@ -648,6 +691,7 @@ function fixDuplicateAssignments(B, assignedTo){
       for (let mIdx=e.members.length-1; mIdx>=0; mIdx--){
         const r=e.members[mIdx];
         if(seen.has(r._id)){
+          // remove duplicate member from this entry
           e.members.splice(mIdx,1);
           e.count -= (r.num||1);
           B[i].count -= (r.num||1);
@@ -659,61 +703,6 @@ function fixDuplicateAssignments(B, assignedTo){
       }
       if(e.members.length===0){
         B[i].pax.splice(j,1); j--;
-      }
-    }
-  }
-}
-
-/* ========= NEW: Final auto-balance pass ========= */
-function autoBalance(B){
-  // Move smallest movable entries off any overfilled boat to the nearest valid boat with room.
-  // Runs a few iterations; stops early when stable.
-  const N=B.length;
-  const eff = b => Math.max(0,b.seats - b.hold);
-  let changed=true, guard=0;
-
-  function flagsLocal(e){
-    const any=f=>e.members.some(x=>x[f]);
-    const sections = e.members.map(x=>x.section);
-    const order = {'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4};
-    const sec = sections.sort((a,b)=> (order[a]??4)-(order[b]??4))[0] || 'Unknown';
-    return { isFR:any('isFR'), isDDI:any('isDDI'), section:sec, rep:e.members[0] };
-  }
-  function canSeatOnBoatLocal(e,i,B){
-    const b=B[i]; const f=flagsLocal(e);
-    if(f.isFR && !b.tagFly) return false;
-    if(f.isDDI) return b.tagDDI===true;
-    if(b.tagDDI && (f.section==='3rd'||f.section==='4th'||f.section==='Unknown')) return false;
-    return true;
-  }
-  function candidateBoatsLocal(e,B){
-    const f=flagsLocal(e);
-    const N=B.length;
-    const usable=[...Array(N).keys()].filter(i=>canSeatOnBoatLocal(e,i,B));
-    const t = (f.section==='1st')?0:(f.section==='2nd')?Math.round((N-1)/3):(f.section==='3rd')?Math.round(2*(N-1)/3):N-1;
-    usable.sort((a,b)=>Math.abs(a-t)-Math.abs(b-t)||a-b);
-    return usable;
-  }
-
-  while(changed && guard++ < N*8){
-    changed=false;
-    for(let i=0;i<N;i++){
-      const over = B[i].count - eff(B[i]);
-      if(over>0){
-        const movable = B[i].pax.filter(e=>!e.locked).sort((a,b)=>a.count-b.count);
-        for(const e of movable){
-          const cands = candidateBoatsLocal(e,B);
-          for(const j of cands){
-            if(j===i) continue;
-            if(B[j].count + e.count <= eff(B[j])){
-              removeEntry(B,i,e); addEntry(B,j,e);
-              e.highlights.add('Auto-balance');
-              changed=true;
-              break;
-            }
-          }
-          if(B[i].count <= eff(B[i])) break;
-        }
       }
     }
   }
@@ -740,6 +729,7 @@ function enableDragAndDrop(){
   const host = el('results');
   if(!runtime || !host) return;
 
+  // Clean previous listeners by cloning
   const clone = host.cloneNode(true);
   host.parentNode.replaceChild(clone, host);
   const root = clone;
@@ -781,17 +771,19 @@ function manualMoveRow(rowId, targetBoat){
   if(!loc){ pushMsg('Could not locate row to move.','bad'); return; }
   const e = B[loc.boat].pax[loc.entry];
 
+  // Move whole entry (keeps TW together)
   const f = (function flagsLocal(){
     const any=f=>e.members.some(x=>x[f]);
-    const order={'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4};
-    const sec=e.members.map(x=>x.section).sort((a,b)=>order[a]-order[b])[0]||'Unknown';
+    const sec=e.members.map(x=>x.section).sort((a,b)=>({'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4}[a]-{'1st':0,'2nd':1,'3rd':2,'4th':3,'Unknown':4}[b]))[0]||'Unknown';
     return { isFR:any('isFR'), isDDI:any('isDDI'), section:sec, rep:e.members[0] };
   })();
 
+  // Rule check (we do not block, but tag)
   const tgt = runtime.B[targetBoat];
   const ruleViolated = (f.isFR && !tgt.tagFly) || (f.isDDI && !tgt.tagDDI) || (tgt.tagDDI && (f.section==='3rd'||f.section==='4th'||f.section==='Unknown'));
   if(ruleViolated) e.highlights.add('Manual move — rule override');
 
+  // Try free up space a bit
   const need = e.count;
   if (runtime.B[targetBoat].count + need > eff(runtime.B[targetBoat])) {
     rippleFree(targetBoat, need, f.rep, 1, new Set());
@@ -800,6 +792,7 @@ function manualMoveRow(rowId, targetBoat){
   removeEntry(runtime.B, loc.boat, e);
   addEntry(runtime.B, targetBoat, e);
 
+  // Rebuild & rebind
   rebuildResults();
 }
 
@@ -854,7 +847,6 @@ function rebuildResults(ignoredCharter=[]){
       for(const r of e.members){
         const tr=document.createElement('tr');
         tr.dataset.rowid = r._id;
-        tr.setAttribute('draggable','true');                     /* make rows draggable */
         tr.innerHTML = `
           <td>${++rowNumber}</td>
           <td>${escapeHtml(r.clientRaw)}</td>
@@ -876,11 +868,13 @@ function rebuildResults(ignoredCharter=[]){
   summary.style.margin='10px 0 0';
   summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalCap}</b>
     ${total>totalCap?'<span class="pill bad" style="margin-left:6px">Over capacity</span>':''}
-    <span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · exactfit+balance</span>`;
+    <span class="mono" style="margin-left:8px;opacity:.6">v=${APP_VERSION} · breathing-room guard</span>`;
   results.prepend(summary);
 
+  // Enable drag & drop via delegation (robust across browsers)
   enableDragAndDrop();
 
+  // Hook CSV download to current runtime state
   const dl=document.getElementById('download');
   dl.onclick=()=>downloadCSV(out);
   dl.disabled=false;
@@ -946,7 +940,7 @@ function wire(){
       return { clientRaw, num, pu, time, timeMins, notes, phone, flyFromCount: flyFromAny, _csvIndex:i };
     });
 
-    // STRONG de-dup
+    // STRONG de-dup: key on normalized client + pu + HH:MM (or empty) + phone (if present)
     const normTime = s=> {
       const m = norm(s); if(!m) return '';
       const mins = parseTimeToSortable(m); if(mins==null) return '';
@@ -979,7 +973,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus(`Ready. (v=${APP_VERSION} · exactfit+balance)`);
+    setStatus(`Ready. (v=${APP_VERSION} · breathing-room guard)`);
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
