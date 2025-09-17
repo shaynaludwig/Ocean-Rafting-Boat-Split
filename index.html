@@ -369,7 +369,6 @@ function allocate(){
   if(ddiRows.length && ddiBoats.length===0 && B.length){
     B[0].tagDDI=true; ddiBoats=tagOrder('DDI'); pushMsg('Auto-tagged earliest boat as DDI.','warn');
   }
-  const eff = b => Math.max(0,b.seats-b.hold); // (shadowed above, reaffirm)
   const ddiCap = ddiBoats.reduce((s,o)=>s+(eff(o.b)-o.b.count),0);
   const ddiNeed = ddiRows.reduce((s,r)=>s+(r.num||1),0);
   if(ddiNeed>ddiCap) popups.push('Not enough space on DDI boat(s). Tag another DDI or redo run sheet.');
