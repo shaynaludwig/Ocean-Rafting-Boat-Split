@@ -813,7 +813,7 @@ function wire(){
 
     el('results').innerHTML='<span class="muted">File loaded. Configure boats, then <b>Allocate</b>.</span>';
     el('download').disabled=true;
-    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready. (v=map-group-latest+extra-fly)`);
+    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready.`);
   });
 }
 
@@ -823,7 +823,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus('Ready. (v=map-group-latest+extra-fly)');
+    setStatus('Ready.');
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
