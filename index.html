@@ -798,7 +798,7 @@ function renderResults(){
     };
   });
 
-  setStatus('Allocation complete. (manual move via dropdowns)');
+  setStatus('Allocation complete.');
 }
 
 function moveRowTo(uid, targetIdx){
@@ -898,7 +898,7 @@ function wire(){
 
     el('results').innerHTML='<span class="muted">File loaded. Configure boats, then <b>Allocate</b>.</span>';
     el('download').disabled=true;
-    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready. (manual move via dropdowns)`);
+    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready.);
   });
 }
 
@@ -908,7 +908,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus('Ready. (manual move via dropdowns)');
+    setStatus('Ready.');
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
