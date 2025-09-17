@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head> 
@@ -798,7 +799,7 @@ function renderResults(){
     };
   });
 
-  setStatus('Allocation complete.');
+  setStatus('Allocation complete. (manual move via dropdowns)');
 }
 
 function moveRowTo(uid, targetIdx){
@@ -898,7 +899,7 @@ function wire(){
 
     el('results').innerHTML='<span class="muted">File loaded. Configure boats, then <b>Allocate</b>.</span>';
     el('download').disabled=true;
-    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready.);
+    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready. (manual move via dropdowns)`);
   });
 }
 
@@ -908,7 +909,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus('Ready.');
+    setStatus('Ready. (manual move via dropdowns)');
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
