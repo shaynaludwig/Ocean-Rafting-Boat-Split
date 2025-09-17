@@ -38,6 +38,7 @@
   .btn-danger{background:#fff;border-color:#fca5a5;color:#b91c1c}
   .btn-danger:hover{background:#fee2e2}
   .btn[disabled]{opacity:.55;cursor:not-allowed}
+  .btn-xxs{padding:4px 8px; font-size:11px; line-height:1; border-radius:8px}
   .boats{display:grid;gap:10px;grid-template-columns:1fr}
   @media(min-width:680px){.boats{grid-template-columns:1fr 1fr}}
   @media(min-width:980px){.boats{grid-template-columns:1fr 1fr 1fr}}
@@ -149,10 +150,17 @@ const DEFAULT_BOATS = [
   { name: "Jammin",         seats: 22, toilet: true },
   { name: "Wildthing",      seats: 19, toilet: false },
 ];
+
 let boats = [];
 let rows = [];
 let ignoredCharter = [];
 let popups = [];
+let uidCounter = 1;
+
+// Allocation state for manual move UI
+let allocBoats = null;
+let allocOverflow = [];
+let csvBlobURL = null;
 
 /* ========= CSV parsing ========= */
 function parseCSV(text){
@@ -316,7 +324,6 @@ function allocate(){
 
   // classification helpers
   const isDDI   = r => /daydream\s*island/i.test(r.pu);
-  const isOwn   = r => /(own\s*way|tbc|not\s*sure|tba)/i.test(r.pu);
   const isEE    = r => /\bee\b/i.test(r.notes||'');
   const noteFly = r => /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||'');
   const hasFR   = r => /\(\s*F\s*\+\s*R\s*\)/i.test(r.clientRaw) || r.flyFromCount || noteFly(r);
@@ -362,6 +369,7 @@ function allocate(){
   if(ddiRows.length && ddiBoats.length===0 && B.length){
     B[0].tagDDI=true; ddiBoats=tagOrder('DDI'); pushMsg('Auto-tagged earliest boat as DDI.','warn');
   }
+  const eff = b => Math.max(0,b.seats-b.hold); // (shadowed above, reaffirm)
   const ddiCap = ddiBoats.reduce((s,o)=>s+(eff(o.b)-o.b.count),0);
   const ddiNeed = ddiRows.reduce((s,r)=>s+(r.num||1),0);
   if(ddiNeed>ddiCap) popups.push('Not enough space on DDI boat(s). Tag another DDI or redo run sheet.');
@@ -372,31 +380,25 @@ function allocate(){
     }
   }
 
-  /* ===== 2) MAP GROUP — place all MAP together on latest non-DDI boat ===== */
+  /* ===== 2) MAP GROUP — latest non-DDI boat, may auto-tag Fly ===== */
   const mapRows = filtered.filter(r=>isMAP(r) && unassigned.has(r));
-  let mapPlacedIdx = null;
   if(mapRows.length){
-    // choose latest non-DDI boat; if none, use absolute last
     let targetIdx = (() => {
       for(let k=B.length-1; k>=0; k--){ if(!B[k].tagDDI) return k; }
       return B.length-1;
     })();
-
-    // If MAP contains any F+R, ensure target is Fly
     const anyMAPisFR = mapRows.some(hasFR);
     if(anyMAPisFR && !B[targetIdx].tagFly){
       B[targetIdx].tagFly = true;
       if(B[targetIdx].tagDDI){ B[targetIdx].tagDDI = false; }
-      pushMsg('MAP group includes F+R — auto-tagged latest boat as Fly-Raft.','warn');
+      pushMsg('MAP includes F+R — auto-tagged latest boat as Fly-Raft.','warn');
     }
-
-    // Compute capacity and try to free space by moving non-MAP off to earlier compatible boats
     const needMAP = mapRows.reduce((s,r)=>s+(r.num||1),0);
     let capLeft = eff(B[targetIdx]) - B[targetIdx].count;
 
     function tryFreeSpaceEarlier(targetIdx, need){
       const target = B[targetIdx];
-      const earlierIdx = [...Array(targetIdx).keys()].reverse(); // targetIdx-1 .. 0
+      const earlierIdx = [...Array(targetIdx).keys()].reverse();
       let freed = 0;
       for(let k = target.pax.length - 1; k >= 0 && freed < need; k--){
         const entry = target.pax[k]; const row = entry.row; const cnt = entry.count;
@@ -405,14 +407,12 @@ function allocate(){
         const donorIsDDI = entry.tags.has('DDI') || isDDI(row);
         const donorIsFR  = entry.tags.has('F+R') || hasFR(row);
         if(donorIsMAP || donorIsTW) continue;
-
         for(const j of earlierIdx){
           const land = B[j];
-          if(land.tagDDI && !donorIsDDI) continue;
           if(donorIsDDI && !land.tagDDI) continue;
+          if(!donorIsDDI && land.tagDDI) continue;
           if(donorIsFR && !land.tagFly) continue;
           if(land.count + cnt <= eff(land)){
-            // move donor
             target.pax.splice(k,1); target.count -= cnt;
             addPax(j, row, [...entry.tags], [...entry.highlights, 'SWAP (freed latest boat for MAP)']);
             freed += cnt; break;
@@ -421,25 +421,19 @@ function allocate(){
       }
       return freed >= need;
     }
-
     if(capLeft < needMAP){
       const ok = tryFreeSpaceEarlier(targetIdx, needMAP - capLeft);
-      if(!ok){
-        popups.push('Not enough space on latest boat to keep all MAP together. Reduce holds or retag boats.');
-      }
+      if(!ok) popups.push('Not enough space on latest boat to keep all MAP together. Reduce holds or retag boats.');
     }
-
-    // Place all MAP on target
     for(const r of mapRows){
       const tags=[]; if(hasFR(r)) tags.push('F+R'); if(isEE(r)) tags.push('EE'); if(isDDI(r)) tags.push('DDI');
       addPax(targetIdx, r, tags, ['MAP grouped (latest boat)']);
       unassigned.delete(r);
       B[targetIdx].mapCount += (r.num||1);
     }
-    mapPlacedIdx = targetIdx;
   }
 
-  /* ===== 3) F+R STRICT (with auto second-latest Fly if overflow) ===== */
+  /* ===== 3) F+R STRICT (auto second-latest Fly if overflow) ===== */
   const flyRows = filtered.filter(r=>hasFR(r) && !earlyBoat(r) && unassigned.has(r))
     .sort((a,b)=>{
       const rank = s => ({'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 5);
@@ -451,12 +445,10 @@ function allocate(){
     const last = edges[1] ?? (B.length-1); B[last].tagFly=true; flyBoats=tagOrder('Fly');
     pushMsg('No Fly boat tagged — auto-tagged latest boat.','warn');
   }
-  // If we still won’t have enough Fly capacity (e.g., last boat capacity reduced by MAP), tag the second-last as extra Fly
   function ensureExtraFlyIfNeeded(){
     let cap = flyBoats.reduce((s,o)=>s+(eff(o.b)-o.b.count),0);
     const need = flyRows.reduce((s,r)=>s+(r.num||1),0);
     if(need > cap){
-      // pick second-latest non-DDI/non-Fly boat
       let idx = B.length-2;
       while(idx>=0 && (B[idx].tagDDI || B[idx].tagFly)) idx--;
       if(idx>=0){
@@ -466,15 +458,14 @@ function allocate(){
     }
   }
   ensureExtraFlyIfNeeded();
-
   for(const r of flyRows){
     if(!unassigned.has(r)) continue; const need=r.num||1; let placed=false;
-    for(const {i} of flyBoats.slice().reverse()){ // latest Fly first
+    for(const {i} of flyBoats.slice().reverse()){
       const b=B[i]; if(b.count+need<=eff(b)){ addPax(i,r,['F+R']); unassigned.delete(r); placed=true; break; }
     }
   }
 
-  /* ===== SWAP HELPER (generalised laterwards) ===== */
+  /* ===== SWAP HELPER ===== */
   function sectionRank(s){ return {'Unknown':0,'4th':1,'3rd':2,'2nd':3,'1st':4}[s] ?? 0; }
   function tryMakeRoomWithSwap(targetIdx, need, refSec, requireFly){
     const target = B[targetIdx];
@@ -486,8 +477,8 @@ function allocate(){
       const row = entry.row;
       const cnt = entry.count;
       const donorRank = sectionRank(row.section);
-      const donorIsDDI = entry.tags.has('DDI') || isDDI(row);
-      const donorIsFR  = entry.tags.has('F+R') || (/\(\s*F\s*\+\s*R\s*\)/i.test(row.clientRaw) || row.flyFromCount || noteFly(row));
+      const donorIsDDI = entry.tags.has('DDI') || /daydream\s*island/i.test(row.pu);
+      const donorIsFR  = entry.tags.has('F+R') || hasFR(row);
       const donorIsTW  = Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped'));
       const donorIsMAP = /\*MAP\*/i.test(row.clientRaw) || /\bMAP\b/i.test(row.clientRaw) || /my\s*adv\s*proj/i.test(row.clientRaw);
       if(donorRank >= refRank) continue;
@@ -506,7 +497,7 @@ function allocate(){
     return freed >= need;
   }
 
-  /* ===== 4) *TW* AFTER DDI & F+R & MAP ===== */
+  /* ===== 4) *TW* AFTER DDI/Fly/MAP ===== */
   function referenceMember(arr){
     const known = arr.filter(r=>r.section && r.section!=='Unknown');
     if(!known.length) return null;
@@ -517,7 +508,7 @@ function allocate(){
     })[0];
   }
   function isFRRow(r){ return hasFR(r); }
-  function isDDIRow(r){ return isDDI(r); }
+  function isDDIRow(r){ return /daydream\s*island/i.test(r.pu); }
 
   for(const [anchor, groupRaw] of new Map(twGroups)){
     const group = Array.from(new Set(groupRaw));
@@ -528,7 +519,6 @@ function allocate(){
     const need = group.reduce((s,r)=>s+(r.num||1),0);
     const anyFR = group.some(isFRRow);
     const ref = referenceMember(group);
-    // Candidate boats
     let candidates = [];
     if(anyFR){
       const flyIdx = tagOrder('Fly').map(x=>x.i);
@@ -557,7 +547,6 @@ function allocate(){
       popups.push(`*TW* group "${anchor}" could not fit on target boat(s)${anyFR?' (Fly-Raft)':''} even after swaps. Tag another boat, reduce holds, or adjust numbers.`);
       continue;
     }
-    // Remove existing placements for these rows (if any)
     for(let bi=0; bi<B.length; bi++){
       const p=B[bi].pax;
       for(let k=p.length-1; k>=0; k--){
@@ -574,7 +563,7 @@ function allocate(){
 
   /* ===== 5) EE ===== */
   let eeBoats = tagOrder('EE');
-  for(const r of filtered.filter(rr=>isEE(rr) && unassigned.has(rr))){
+  for(const r of filtered.filter(rr=>/\bee\b/i.test(rr.notes||'') && unassigned.has(rr))){
     const need=r.num||1;
     const earlyEE = (r.section==='1st'||r.section==='2nd');
     if(earlyEE && B.length>=3){
@@ -621,7 +610,7 @@ function allocate(){
     if(placed) unassigned.delete(r);
   });
 
-  /* ===== 7) FINAL FIT — general swap pass for remaining ===== */
+  /* ===== 7) FINAL FIT swaps ===== */
   const still = [...unassigned];
   for(const r of still){
     const need=r.num||1;
@@ -635,11 +624,23 @@ function allocate(){
     if(landed) unassigned.delete(r);
   }
 
-  /* ===== Render output ===== */
-  const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
-  const results = el('results'); results.innerHTML='';
-  let total=0, totalEffCap=0;
+  // Save state for manual moves and render
+  allocBoats = B;
+  allocOverflow = [...unassigned];
+  renderResults();
+  if(popups.length) alert(popups.join('\n\n'));
+}
 
+/* ========= Results rendering + manual move controls ========= */
+function renderResults(){
+  const B = allocBoats;
+  const results = el('results');
+  if(!results) return;
+  results.innerHTML = '';
+
+  const eff = b => Math.max(0,b.seats-b.hold);
+
+  // Header warning for ignored charters
   if(ignoredCharter.length){
     const warn=document.createElement('div');
     warn.className='err';
@@ -648,6 +649,9 @@ function allocate(){
     results.appendChild(warn);
   }
 
+  const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
+
+  let total=0, totalEffCap=0;
   B.forEach((b,idx)=>{
     total+=b.count; totalEffCap+=eff(b);
     const boatTags=[b.tagDDI?'DDI':'', b.tagFly?'Fly-Raft':'', b.tagEE?'EE':''].filter(Boolean).join('; ');
@@ -667,7 +671,7 @@ function allocate(){
 
     const table=document.createElement('table');
     table.innerHTML = `<thead><tr>
-      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Highlights</th>
+      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Highlights</th><th>Move</th>
     </tr></thead>`;
     const tb=document.createElement('tbody');
 
@@ -677,7 +681,8 @@ function allocate(){
         <td>—</td><td>SEAT HOLD</td><td>${b.hold}</td>
         <td></td><td></td><td></td>
         <td><span class="pill tag">Hold</span></td>
-        <td><span class="pill warn">Seats reserved; not for allocation</span></td>`;
+        <td><span class="pill warn">Seats reserved; not for allocation</span></td>
+        <td></td>`;
       tb.appendChild(tr);
       out.push([b.name,idx+1,b.hold,boatTags,'SEAT HOLD',b.hold,'','','','','Hold','Seats reserved; not for allocation','']);
     }
@@ -693,16 +698,20 @@ function allocate(){
         <td>${p.row.time||''}</td>
         <td>${p.row.section}</td>
         <td>${tags.map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
-        <td>${hl.filter(Boolean).map(t=>`<span class="pill warn">${escapeHtml(t)}</span>`).join(' ')}</td>`;
+        <td>${Array.from(new Set(hl)).filter(Boolean).map(t=>`<span class="pill warn">${escapeHtml(t)}</span>`).join(' ')}</td>
+        <td>
+          <button class="btn btn-xxs" data-move="-1" data-uid="${p.row._uid}" title="Move to earlier boat">◀</button>
+          <button class="btn btn-xxs" data-move="1" data-uid="${p.row._uid}" title="Move to later boat">▶</button>
+        </td>`;
       tb.appendChild(tr);
-      out.push([b.name,idx+1,b.hold,boatTags,p.row.clientRaw,p.count,p.row.pu,p.row.time||'',p.row.notes||'',p.row.phone||'',tags.join('; '),hl.filter(Boolean).join('; '),p.row.section]);
+      out.push([b.name,idx+1,b.hold,boatTags,p.row.clientRaw,p.count,p.row.pu,p.row.time||'',p.row.notes||'',p.row.phone||'',tags.join('; '),Array.from(new Set(hl)).filter(Boolean).join('; '),p.row.section]);
     });
     table.appendChild(tb);
     results.appendChild(table);
   });
 
-  /* ===== Overflow / Holding boat ===== */
-  const overflow = [...unassigned];
+  // Overflow
+  const overflow = allocOverflow || [];
   if(overflow.length){
     const head=document.createElement('div');
     head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
@@ -718,9 +727,9 @@ function allocate(){
     const tb=document.createElement('tbody');
     overflow.forEach((r,i)=>{
       const tags=[];
-      if(isDDI(r)) tags.push('DDI');
-      if(hasFR(r)) tags.push('F+R');
-      if(isEE(r))  tags.push('EE');
+      if(/daydream\s*island/i.test(r.pu)) tags.push('DDI');
+      if(/\(\s*F\s*\+\s*R\s*\)/i.test(r.clientRaw) || r.flyFromCount || /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||'')) tags.push('F+R');
+      if(/\bee\b/i.test(r.notes||'')) tags.push('EE');
       const tr=document.createElement('tr');
       tr.innerHTML = `
         <td>${i+1}</td>
@@ -737,25 +746,61 @@ function allocate(){
     table.appendChild(tb); results.appendChild(table);
   }
 
+  // Summary
   const summary=document.createElement('div'); summary.className='status';
   summary.style.margin='10px 0 0';
   const totalOverflow = overflow.reduce((s,r)=>s+(r.num||1),0);
-  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}
+  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${B.reduce((s,b)=>s+eff(b),0)}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}
   ${totalOverflow?` — Overflow (review): <b>${totalOverflow}</b>`:''}`;
   results.prepend(summary);
 
-  // CSV Download
+  // CSV blob
+  if(csvBlobURL) URL.revokeObjectURL(csvBlobURL);
   const safeToCSV = rows => rows.map(r=>r.map(v=>{
     if(v==null) return '';
     const s=String(v);
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
   }).join(',')).join('\n');
   const csv = safeToCSV(out);
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob);
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); 
+  csvBlobURL = URL.createObjectURL(blob);
   const dl=document.getElementById('download');
-  dl.onclick=()=>{ const stamp=new Date().toISOString().slice(0,10); const a=document.createElement('a'); a.href=url; a.download=`boat-split-${document.getElementById('tour').value}-${stamp}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
+  dl.onclick=()=>{ const stamp=new Date().toISOString().slice(0,10); const a=document.createElement('a'); a.href=csvBlobURL; a.download=`boat-split-${document.getElementById('tour').value}-${stamp}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
   dl.disabled=false;
-  setStatus('Allocation complete.');
+
+  // Wire move buttons
+  results.querySelectorAll('button[data-move]').forEach(btn=>{
+    btn.onclick = () => {
+      const dir = parseInt(btn.dataset.move,10);
+      const uid = parseInt(btn.dataset.uid,10);
+      manualMove(uid, dir);
+    };
+  });
+
+  setStatus('Allocation complete. (manual move enabled)');
+}
+
+function manualMove(uid, dir){
+  if(!allocBoats) return;
+  let from=-1, entryIdx=-1;
+  for(let i=0;i<allocBoats.length;i++){
+    const p = allocBoats[i].pax;
+    for(let k=0;k<p.length;k++){
+      if(p[k].row._uid===uid){ from=i; entryIdx=k; break; }
+    }
+    if(from!==-1) break;
+  }
+  if(from===-1) return;
+  const to = from + dir;
+  if(to<0 || to>=allocBoats.length) return;
+
+  const entry = allocBoats[from].pax.splice(entryIdx,1)[0];
+  allocBoats[from].count -= entry.count;
+  entry.highlights = new Set([...(entry.highlights||[]), 'Manual move']);
+  allocBoats[to].pax.push(entry);
+  allocBoats[to].count += entry.count;
+
+  renderResults();
 }
 
 /* ========= Wiring ========= */
@@ -765,10 +810,13 @@ function wire(){
 
   el('file').addEventListener('change', async e=>{
     clearMsgs(); popups=[]; ignoredCharter = [];
+    allocBoats=null; allocOverflow=[]; if(csvBlobURL) { URL.revokeObjectURL(csvBlobURL); csvBlobURL=null; }
+    el('results').innerHTML='<span class="muted">Reading file…</span>';
+
     const f=e.target.files?.[0]; if(!f) return;
     const text = await f.text();
     const raw = parseCSV(text);
-    if(!raw.length){ setStatus('Empty CSV.'); return; }
+    if(!raw.length){ setStatus('Empty CSV.'); el('results').innerHTML='<span class="muted">Empty CSV.</span>'; return; }
 
     const header = raw[0].map(h=>h.trim());
     const data = raw.slice(1);
@@ -780,10 +828,11 @@ function wire(){
     const idxNotes =findColIndex(header,COL_ALIASES.notes);
     const idxPhone =findColIndex(header,COL_ALIASES.phone);
 
-    if(idxClient<0 || idxPU<0){ setStatus('Missing required columns: need at least Client and P/U Point.'); return; }
+    if(idxClient<0 || idxPU<0){ setStatus('Missing required columns: need at least Client and P/U Point.'); el('results').innerHTML='<span class="muted">Missing required columns.</span>'; return; }
 
+    uidCounter = 1;
     const prepared = data
-      .filter(r => r.some(c => norm(c) !== '')) // ignore blank rows anywhere
+      .filter(r => r.some(c => norm(c) !== ''))
       .map(r=>{
         const clientRaw = norm(r[idxClient]);
         const numRaw = (r[idxNum]??'').toString();
@@ -801,7 +850,7 @@ function wire(){
         const phone= norm(idxPhone>=0?r[idxPhone]:'');
         const timeMins = parseTimeToSortable(time);
 
-        return { clientRaw, num, pu, time, timeMins, notes, phone, flyFromCount: flyFromAny };
+        return { _uid: uidCounter++, clientRaw, num, pu, time, timeMins, notes, phone, flyFromCount: flyFromAny };
       });
 
     ignoredCharter = prepared.filter(x=>/charter/i.test(x.pu));
@@ -813,7 +862,7 @@ function wire(){
 
     el('results').innerHTML='<span class="muted">File loaded. Configure boats, then <b>Allocate</b>.</span>';
     el('download').disabled=true;
-    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready.`);
+    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready. (manual move capable)`);
   });
 }
 
@@ -823,7 +872,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus('Ready.');
+    setStatus('Ready. (manual move capable)');
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
