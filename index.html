@@ -138,6 +138,7 @@ function pushMsg(text,tone=''){
 function norm(s){ return (s??'').toString().trim(); }
 function escapeHtml(s){ return (s??'').replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m])); }
 function edgeOrder(n){ const res=[]; for(let a=0,b=n-1;a<=b;a++,b--){ res.push(a); if(b>a) res.push(b);} return res; }
+function eff(b){ return Math.max(0,(b?.seats||0)-(b?.hold||0)); } // effective capacity
 
 /* ========= Defaults ========= */
 const DEFAULT_BOATS = [
@@ -304,7 +305,6 @@ function allocate(){
     hold: Math.max(0,Math.min(b.hold||0,b.seats)),
     pax:[], count:0, twGroups:new Set(), mapCount:0
   }));
-  const eff = b => Math.max(0,b.seats-b.hold);
   const edges = edgeOrder(B.length);
   const lastIdx = edges[1] ?? (B.length-1);
   const edgeBoats = edges.map(i=>({i,b:B[i]}));
@@ -401,7 +401,7 @@ function allocate(){
       let freed = 0;
       for(let k = target.pax.length - 1; k >= 0 && freed < need; k--){
         const entry = target.pax[k]; const row = entry.row; const cnt = entry.count;
-        const donorIsMAP = /\*MAP\*/i.test(row.clientRaw) || /\bMAP\b/i.test(row.clientRaw) || /my\s*adv\s*proj/i.test(row.clientRaw);
+        const donorIsMAP = isMAP(row);
         const donorIsTW  = Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped'));
         const donorIsDDI = entry.tags.has('DDI') || isDDI(row);
         const donorIsFR  = entry.tags.has('F+R') || hasFR(row);
@@ -476,10 +476,10 @@ function allocate(){
       const row = entry.row;
       const cnt = entry.count;
       const donorRank = sectionRank(row.section);
-      const donorIsDDI = entry.tags.has('DDI') || /daydream\s*island/i.test(row.pu);
+      const donorIsDDI = entry.tags.has('DDI') || isDDI(row);
       const donorIsFR  = entry.tags.has('F+R') || hasFR(row);
       const donorIsTW  = Array.from(entry.highlights||[]).some(h => h.includes('*TW* grouped'));
-      const donorIsMAP = /\*MAP\*/i.test(row.clientRaw) || /\bMAP\b/i.test(row.clientRaw) || /my\s*adv\s*proj/i.test(row.clientRaw);
+      const donorIsMAP = isMAP(row);
       if(donorRank >= refRank) continue;
       if(donorIsDDI || donorIsTW || donorIsMAP) continue;
       for(const j of laterIdx){
@@ -507,7 +507,7 @@ function allocate(){
     })[0];
   }
   function isFRRow(r){ return hasFR(r); }
-  function isDDIRow(r){ return /daydream\s*island/i.test(r.pu); }
+  function isDDIRow(r){ return isDDI(r); }
 
   for(const [anchor, groupRaw] of new Map(twGroups)){
     const group = Array.from(new Set(groupRaw));
@@ -562,7 +562,7 @@ function allocate(){
 
   /* ===== 5) EE ===== */
   let eeBoats = tagOrder('EE');
-  for(const r of filtered.filter(rr=>/\bee\b/i.test(rr.notes||'') && unassigned.has(rr))){
+  for(const r of filtered.filter(rr=>isEE(rr) && unassigned.has(rr))){
     const need=r.num||1;
     const earlyEE = (r.section==='1st'||r.section==='2nd');
     if(earlyEE && B.length>=3){
@@ -637,8 +637,6 @@ function renderResults(){
   if(!results) return;
   results.innerHTML = '';
 
-  const eff = b => Math.max(0,b.seats-b.hold);
-
   // Header warning for ignored charters
   if(ignoredCharter.length){
     const warn=document.createElement('div');
@@ -650,9 +648,12 @@ function renderResults(){
 
   const out=[["Boat","DepartureOrder","Boat Hold Seats","Boat Tags","Client","No. Pass.","P/U Point","Time","Pickup Notes","Phone","Tags","Highlights","Pickup Section"]];
 
-  let total=0, totalEffCap=0;
+  let total=0;
   B.forEach((b,idx)=>{
-    total+=b.count; totalEffCap+=eff(b);
+    total+=b.count;
+    // Recompute MAP chip based on current pax (covers manual moves)
+    b.mapCount = b.pax.reduce((s,p)=> s + (/\*MAP\*/i.test(p.row.clientRaw) || /\bMAP\b/i.test(p.row.clientRaw) || /my\s*adv\s*proj/i.test(p.row.clientRaw) ? p.count : 0), 0);
+
     const boatTags=[b.tagDDI?'DDI':'', b.tagFly?'Fly-Raft':'', b.tagEE?'EE':''].filter(Boolean).join('; ');
     const head=document.createElement('div');
     head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
@@ -668,9 +669,12 @@ function renderResults(){
       </div>`;
     results.appendChild(head);
 
+    // Build boat options for dropdowns (numbered)
+    const boatOpts = B.map((bb,bi)=>`<option value="${bi}">${bi+1}. ${escapeHtml(bb.name)}</option>`).join('');
+
     const table=document.createElement('table');
     table.innerHTML = `<thead><tr>
-      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Highlights</th><th>Move</th>
+      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Highlights</th><th>Move to</th>
     </tr></thead>`;
     const tb=document.createElement('tbody');
 
@@ -699,8 +703,11 @@ function renderResults(){
         <td>${tags.map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
         <td>${Array.from(new Set(hl)).filter(Boolean).map(t=>`<span class="pill warn">${escapeHtml(t)}</span>`).join(' ')}</td>
         <td>
-          <button class="btn btn-xxs" data-move="-1" data-uid="${p.row._uid}" title="Move to earlier boat">◀</button>
-          <button class="btn btn-xxs" data-move="1" data-uid="${p.row._uid}" title="Move to later boat">▶</button>
+          <select class="mv-target" data-uid="${p.row._uid}">
+            <option value="">— Select boat —</option>
+            ${boatOpts}
+          </select>
+          <button class="btn btn-xxs" data-move-row="1" data-uid="${p.row._uid}">Move</button>
         </td>`;
       tb.appendChild(tr);
       out.push([b.name,idx+1,b.hold,boatTags,p.row.clientRaw,p.count,p.row.pu,p.row.time||'',p.row.notes||'',p.row.phone||'',tags.join('; '),Array.from(new Set(hl)).filter(Boolean).join('; '),p.row.section]);
@@ -716,19 +723,22 @@ function renderResults(){
     head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center';
     head.style.margin='12px 0 6px';
     head.innerHTML = `<div><b>⚠ Overflow (Review)</b> &nbsp; <span class="pill bad">${overflow.reduce((s,r)=>s+(r.num||1),0)} pax</span></div>
-      <div class="chips"><span class="chip">Unplaced — adjust holds/tags or add boat</span></div>`;
+      <div class="chips"><span class="chip">Unplaced — use Move to assign</span></div>`;
     results.appendChild(head);
 
+    const boatOpts = B.map((bb,bi)=>`<option value="${bi}">${bi+1}. ${escapeHtml(bb.name)}</option>`).join('');
     const table=document.createElement('table');
     table.innerHTML = `<thead><tr>
-      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Why</th>
+      <th>#</th><th>Client</th><th>No. Pass.</th><th>P/U Point</th><th>Time</th><th>Section</th><th>Tags</th><th>Why</th><th>Move to</th>
     </tr></thead>`;
     const tb=document.createElement('tbody');
+
     overflow.forEach((r,i)=>{
       const tags=[];
       if(/daydream\s*island/i.test(r.pu)) tags.push('DDI');
       if(/\(\s*F\s*\+\s*R\s*\)/i.test(r.clientRaw) || r.flyFromCount || /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||'')) tags.push('F+R');
       if(/\bee\b/i.test(r.notes||'')) tags.push('EE');
+
       const tr=document.createElement('tr');
       tr.innerHTML = `
         <td>${i+1}</td>
@@ -738,18 +748,26 @@ function renderResults(){
         <td>${r.time||''}</td>
         <td>${r.section}</td>
         <td>${tags.map(t=>`<span class="pill tag">${t}</span>`).join(' ')}</td>
-        <td><span class="pill bad">No capacity after swaps</span></td>`;
+        <td><span class="pill bad">No capacity after swaps</span></td>
+        <td>
+          <select class="mv-target" data-uid="${r._uid}">
+            <option value="">— Select boat —</option>
+            ${boatOpts}
+          </select>
+          <button class="btn btn-xxs" data-move-row="1" data-uid="${r._uid}">Move</button>
+        </td>`;
       tb.appendChild(tr);
-      out.push(['OVERFLOW', '', '', '', r.clientRaw, r.num||1, r.pu, r.time||'', r.notes||'', r.phone||'', tags.join('; '), 'Unplaced after swap-pass', r.section]);
     });
+
     table.appendChild(tb); results.appendChild(table);
   }
 
   // Summary
   const summary=document.createElement('div'); summary.className='status';
   summary.style.margin='10px 0 0';
+  const totalEffCap = B.reduce((s,b)=>s+eff(b),0);
   const totalOverflow = overflow.reduce((s,r)=>s+(r.num||1),0);
-  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${B.reduce((s,b)=>s+eff(b),0)}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}
+  summary.innerHTML = `Total allocated: <b>${total}</b> / Effective capacity: <b>${totalEffCap}</b>${total>totalEffCap?' <span class="pill bad">Over capacity</span>':''}
   ${totalOverflow?` — Overflow (review): <b>${totalOverflow}</b>`:''}`;
   results.prepend(summary);
 
@@ -767,20 +785,23 @@ function renderResults(){
   dl.onclick=()=>{ const stamp=new Date().toISOString().slice(0,10); const a=document.createElement('a'); a.href=csvBlobURL; a.download=`boat-split-${document.getElementById('tour').value}-${stamp}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
   dl.disabled=false;
 
-  // Wire move buttons
-  results.querySelectorAll('button[data-move]').forEach(btn=>{
+  // Wire all Move buttons (boats + overflow)
+  results.querySelectorAll('button[data-move-row]').forEach(btn=>{
     btn.onclick = () => {
-      const dir = parseInt(btn.dataset.move,10);
       const uid = parseInt(btn.dataset.uid,10);
-      manualMove(uid, dir);
+      const sel = results.querySelector(`select.mv-target[data-uid="${uid}"]`);
+      const targetIdx = sel && sel.value !== '' ? parseInt(sel.value,10) : NaN;
+      if(!isNaN(targetIdx)) moveRowTo(uid, targetIdx);
     };
   });
 
-  setStatus('Allocation complete. (manual move enabled)');
+  setStatus('Allocation complete. (manual move via dropdowns)');
 }
 
-function manualMove(uid, dir){
+function moveRowTo(uid, targetIdx){
   if(!allocBoats) return;
+
+  // 1) try find in boats
   let from=-1, entryIdx=-1;
   for(let i=0;i<allocBoats.length;i++){
     const p = allocBoats[i].pax;
@@ -789,17 +810,30 @@ function manualMove(uid, dir){
     }
     if(from!==-1) break;
   }
-  if(from===-1) return;
-  const to = from + dir;
-  if(to<0 || to>=allocBoats.length) return;
+  if(from!==-1){
+    if(targetIdx<0 || targetIdx>=allocBoats.length || targetIdx===from) return;
+    const entry = allocBoats[from].pax.splice(entryIdx,1)[0];
+    allocBoats[from].count -= entry.count;
+    entry.highlights = new Set([...(entry.highlights||[]), 'Manual move']);
+    allocBoats[targetIdx].pax.push(entry);
+    allocBoats[targetIdx].count += entry.count;
+    renderResults();
+    return;
+  }
 
-  const entry = allocBoats[from].pax.splice(entryIdx,1)[0];
-  allocBoats[from].count -= entry.count;
-  entry.highlights = new Set([...(entry.highlights||[]), 'Manual move']);
-  allocBoats[to].pax.push(entry);
-  allocBoats[to].count += entry.count;
-
-  renderResults();
+  // 2) otherwise from overflow
+  const i = allocOverflow.findIndex(r => r._uid === uid);
+  if(i !== -1){
+    const r = allocOverflow.splice(i,1)[0];
+    const tags = new Set();
+    if(/daydream\s*island/i.test(r.pu)) tags.add('DDI');
+    if(/\(\s*F\s*\+\s*R\s*\)/i.test(r.clientRaw) || r.flyFromCount || /(fly[-\s]*raft|fly\s*raft)/i.test(r.notes||'')) tags.add('F+R');
+    if(/\bee\b/i.test(r.notes||'')) tags.add('EE');
+    const entry = { row:r, count:(r.num||1), tags, highlights:new Set(['Manual move (from overflow)']) };
+    allocBoats[targetIdx].pax.push(entry);
+    allocBoats[targetIdx].count += (r.num||1);
+    renderResults();
+  }
 }
 
 /* ========= Wiring ========= */
@@ -861,7 +895,7 @@ function wire(){
 
     el('results').innerHTML='<span class="muted">File loaded. Configure boats, then <b>Allocate</b>.</span>';
     el('download').disabled=true;
-    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready. (manual move capable)`);
+    setStatus(`Loaded ${rows.length} rows (ignored ${ignoredCharter.length} charter). Ready. (manual move via dropdowns)`);
   });
 }
 
@@ -871,7 +905,7 @@ function init(){
     boats = cloneBoats();
     renderBoats();
     wire();
-    setStatus('Ready. (manual move capable)');
+    setStatus('Ready. (manual move via dropdowns)');
   }catch(e){
     const host = document.querySelector('#results');
     const pre = document.createElement('div');
