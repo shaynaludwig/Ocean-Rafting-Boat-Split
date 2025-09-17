@@ -755,7 +755,7 @@ function allocate(){
   const dl=document.getElementById('download');
   dl.onclick=()=>{ const stamp=new Date().toISOString().slice(0,10); const a=document.createElement('a'); a.href=url; a.download=`boat-split-${document.getElementById('tour').value}-${stamp}.csv`; document.body.appendChild(a); a.click(); a.remove(); };
   dl.disabled=false;
-  setStatus('Allocation complete. (v=map-group-latest+extra-fly)');
+  setStatus('Allocation complete.');
 }
 
 /* ========= Wiring ========= */
